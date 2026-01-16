@@ -10,7 +10,7 @@ from catboost import CatBoostClassifier, Pool
 # - lit un modèle CatBoost .cbm
 # - lit un meta .json (feature_cols, cat_cols, factor_levels)
 # - UI retravaillée (landing page + parcours)
-# - champ vide => NA
+# - champ non renseigné => NA (sans afficher "(NA)" à l'utilisateur)
 # - remplit automatiquement *_missing_code :
 #     NA sur analyse => 2 (MNAR)
 #     NA hors analyse => 1 (MCAR)
@@ -25,8 +25,9 @@ APP_SUBTITLE = "Analyse structurée basée sur les données cliniques, biologiqu
 MODEL_DEFAULT = "equine_lyme_catboost.cbm"
 META_DEFAULT  = "equine_lyme_catboost_meta.json"
 
-# --- Image du repository GitHub (RAW) pour la bannière centrale
-HERO_IMAGE_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
+# --- Images du repository GitHub (RAW)
+HERO_IMAGE_URL  = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
+MINI_LOGO_URL   = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/minilyrae.png"
 
 # --- Liste des colonnes "analyses" (MNAR si NA) -> EXACT comme ton code
 analysis_cols = [
@@ -50,7 +51,7 @@ analysis_cols = [
 ]
 
 # ============================================================
-# Page config + CSS (style proche de ta maquette)
+# Page config + CSS (vert & beige + onglets + inputs plus visibles)
 # ============================================================
 st.set_page_config(page_title=f"{APP_BRAND} — {APP_TITLE}", layout="wide")
 
@@ -59,29 +60,31 @@ CSS = """
 /* ----- hide streamlit chrome ----- */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-header {visibility: hidden;}  /* barre streamlit haut */
+header {visibility: hidden;}
 
-/* ----- global ----- */
+/* ----- palette ----- */
 :root{
-  --lyrae-green-900:#0e3b35;
-  --lyrae-green-800:#154b43;
-  --lyrae-green-700:#1f5a51;
-  --lyrae-cream:#f4f2ed;
-  --lyrae-ink:#1d2a2a;
-  --lyrae-muted:#5c6b6a;
-  --lyrae-accent:#b06a2a;
-  --lyrae-accent-2:#d08a45;
+  --g900:#0e3b35;
+  --g850:#124640;
+  --g800:#154b43;
+  --g700:#1f5a51;
+  --beige:#f4f2ed;
+  --beige2:#efe9df;
+  --ink:#1d2a2a;
+  --muted:#5c6b6a;
+  --accent:#b08b5a;        /* beige doré */
+  --accent2:#d2b48c;
   --card:#ffffffcc;
   --shadow: 0 10px 30px rgba(0,0,0,.12);
   --shadow-soft: 0 8px 22px rgba(0,0,0,.10);
   --radius: 18px;
 }
 
+/* ----- background ----- */
 .stApp{
-  background: radial-gradient(1200px 600px at 50% 0%, #ffffff 0%, var(--lyrae-cream) 60%, #efece6 100%);
-  color: var(--lyrae-ink);
+  background: radial-gradient(1200px 600px at 50% 0%, #ffffff 0%, var(--beige) 60%, var(--beige2) 100%);
+  color: var(--ink);
 }
-
 .block-container{
   padding-top: 0rem;
   padding-bottom: 2.2rem;
@@ -93,7 +96,7 @@ header {visibility: hidden;}  /* barre streamlit haut */
   position: sticky;
   top: 0;
   z-index: 999;
-  background: linear-gradient(180deg, var(--lyrae-green-900) 0%, var(--lyrae-green-800) 100%);
+  background: linear-gradient(180deg, var(--g900) 0%, var(--g800) 100%);
   box-shadow: 0 4px 18px rgba(0,0,0,.18);
   padding: 14px 22px;
   margin: 0 -9999px;
@@ -113,27 +116,29 @@ header {visibility: hidden;}  /* barre streamlit haut */
   align-items:center;
   gap: 12px;
   color: #ffffff;
-  font-weight: 700;
-  letter-spacing: .5px;
+  font-weight: 800;
+  letter-spacing: .6px;
   font-size: 20px;
 }
-.lyrae-mark{
-  width: 34px;
-  height: 34px;
+.lyrae-logo{
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #f3d6b5 0%, #d9a971 35%, #a86a2c 100%);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  box-shadow: 0 10px 20px rgba(0,0,0,.2) inset;
+  overflow:hidden;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.25);
+  flex: 0 0 auto;
 }
-.lyrae-mark svg{opacity:.95}
-
+.lyrae-logo img{
+  width:100%;
+  height:100%;
+  display:block;
+}
 .lyrae-right{
   display:flex;
   align-items:center;
   gap: 14px;
-  color: rgba(255,255,255,.9);
+  color: rgba(255,255,255,.92);
   font-size: 14px;
 }
 .lyrae-pill{
@@ -143,14 +148,41 @@ header {visibility: hidden;}  /* barre streamlit haut */
   border: 1px solid rgba(255,255,255,.14);
 }
 
-/* make selectbox look like a pill */
-div[data-testid="stSelectbox"] > div{
-  background: rgba(255,255,255,.10) !important;
-  border-radius: 999px !important;
-  border: 1px solid rgba(255,255,255,.14) !important;
+/* ----- tabs visibility ----- */
+div[data-testid="stTabs"]{
+  background: transparent;
+}
+div[data-testid="stTabs"] button[role="tab"]{
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  margin-right: 8px !important;
+  background: rgba(14,59,53,.07) !important;
+  border: 1px solid rgba(14,59,53,.18) !important;
+  color: rgba(14,59,53,.92) !important;
+  font-weight: 750 !important;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
+  background: rgba(14,59,53,.13) !important;
+  border: 2px solid rgba(14,59,53,.35) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.08) !important;
+}
+
+/* ----- inputs readability (keep green/beige) ----- */
+div[data-testid="stSelectbox"] > div, 
+div[data-testid="stTextInput"] > div > div, 
+div[data-testid="stNumberInput"] > div > div {
+  border-radius: 12px !important;
+  border: 1px solid rgba(14,59,53,.18) !important;
+  background: rgba(255,255,255,.75) !important;
+}
+div[data-testid="stSelectbox"] label, 
+div[data-testid="stTextInput"] label, 
+div[data-testid="stNumberInput"] label {
+  color: rgba(14,59,53,.92) !important;
+  font-weight: 700 !important;
 }
 div[data-testid="stSelectbox"] *{
-  color: rgba(255,255,255,.95) !important;
+  color: rgba(14,59,53,.92) !important;
 }
 
 /* ----- hero ----- */
@@ -162,7 +194,7 @@ div[data-testid="stSelectbox"] *{
   margin: 0;
   font-size: 42px;
   line-height: 1.12;
-  font-weight: 750;
+  font-weight: 780;
   color: #20424b;
 }
 .lyrae-hero p{
@@ -171,7 +203,6 @@ div[data-testid="stSelectbox"] *{
   font-size: 17px;
   color: #5b6b6a;
 }
-
 .lyrae-illustration{
   margin: 30px auto 24px auto;
   border-radius: 22px;
@@ -180,7 +211,6 @@ div[data-testid="stSelectbox"] *{
   overflow:hidden;
   border: 1px solid rgba(0,0,0,.05);
 }
-
 .lyrae-cta-wrap{
   display:flex;
   align-items:center;
@@ -202,29 +232,28 @@ div[data-testid="stSelectbox"] *{
   opacity:.55;
 }
 
-/* ----- evaluation layout ----- */
+/* ----- cards ----- */
 .lyrae-page-title{
   margin: 26px 0 6px 0;
   font-size: 28px;
-  font-weight: 760;
+  font-weight: 780;
   color: #20424b;
 }
 .lyrae-page-sub{
   margin: 0 0 18px 0;
   color: #5b6b6a;
 }
-
 .lyrae-card{
   background: var(--card);
-  border: 1px solid rgba(0,0,0,.06);
+  border: 1px solid rgba(14,59,53,.12);
   border-radius: var(--radius);
   box-shadow: var(--shadow-soft);
-  padding: 18px 18px 8px 18px;
+  padding: 18px 18px 10px 18px;
 }
 .lyrae-card h3{
   margin: 0 0 10px 0;
   font-size: 18px;
-  font-weight: 750;
+  font-weight: 780;
   color:#24474f;
 }
 .lyrae-chip{
@@ -233,23 +262,27 @@ div[data-testid="stSelectbox"] *{
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(14,59,53,.08);
-  border: 1px solid rgba(14,59,53,.12);
+  background: rgba(14,59,53,.10);
+  border: 1px solid rgba(14,59,53,.18);
   color: rgba(14,59,53,.95);
-  font-weight: 650;
+  font-weight: 750;
   font-size: 13px;
   margin-bottom: 10px;
 }
 
-/* buttons (streamlit) */
-.stButton > button{
+/* buttons */
+.stButton > button, .stDownloadButton > button{
   border-radius: 12px !important;
   padding: 0.75rem 1.1rem !important;
-  font-weight: 750 !important;
+  font-weight: 780 !important;
+  border: 1px solid rgba(14,59,53,.25) !important;
 }
-.stDownloadButton > button{
-  border-radius: 12px !important;
-  font-weight: 750 !important;
+.stButton > button{
+  background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
+  color: rgba(14,59,53,.98) !important;
+}
+.stButton > button:hover{
+  filter: brightness(1.02);
 }
 </style>
 """
@@ -285,19 +318,10 @@ def load_model_and_meta(model_path_str: str, meta_path_str: str):
     cat_cols = meta["cat_cols"]
     factor_levels = meta["factor_levels"]
 
-    # indices des catégorielles (0-based, côté Pool Python on passe des indices)
     cat_idx = [feature_cols.index(c) for c in cat_cols if c in feature_cols]
-
     return model, meta, feature_cols, cat_cols, factor_levels, cat_idx
 
 def yn_to_num_if_needed(val, col_is_numeric: bool):
-    """
-    EXACT esprit de .yn_to_num_if_needed R:
-    convertir oui/non -> 1/0 UNIQUEMENT si la colonne est numérique dans le train.
-    Ici on ne connaît pas le type train depuis R, donc:
-    - on applique cette conversion seulement aux colonnes NON catégorielles (donc supposées numériques)
-    - si c'est un texte autre que oui/non -> on laisse, puis to_numeric(coerce) => NA
-    """
     if val is None:
         return val
     if pd.isna(val):
@@ -316,8 +340,7 @@ def yn_to_num_if_needed(val, col_is_numeric: bool):
     return val
 
 def build_template(feature_cols):
-    X = pd.DataFrame([{c: pd.NA for c in feature_cols}])
-    return X
+    return pd.DataFrame([{c: pd.NA for c in feature_cols}])
 
 def apply_inputs_to_template(X, inputs: dict):
     for k, v in inputs.items():
@@ -326,17 +349,10 @@ def apply_inputs_to_template(X, inputs: dict):
     return X
 
 def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
-    """
-    EXACT logique du bloc 7.B R (cheval unique):
-    - init *_missing_code à 0
-    - pour chaque *_missing_code: si base NA => 2 si base in analysis_cols else 1
-      sinon reste 0
-    """
     miss_cols = [c for c in X.columns if c.endswith("_missing_code")]
     if len(miss_cols) == 0:
         return X
 
-    # init 0
     for mc in miss_cols:
         X.at[0, mc] = 0
 
@@ -344,39 +360,26 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
         base = mc.replace("_missing_code", "")
         if base not in X.columns:
             continue
-        is_miss = pd.isna(X.at[0, base])
-        if is_miss:
+        if pd.isna(X.at[0, base]):
             X.at[0, mc] = 2 if base in analysis_cols_set else 1
     return X
 
 def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list, factor_levels: dict):
-    """
-    EXACT esprit de .coerce_like_train R:
-    - cat -> categorical avec niveaux train
-    - num -> float (numeric double)
-    """
-    # Catégorielles
     for c in cat_cols:
         if c in X.columns:
             lv = factor_levels.get(c, None)
             X[c] = X[c].astype("string")
-            if lv is not None:
-                X[c] = pd.Categorical(X[c], categories=lv)
-            else:
-                X[c] = pd.Categorical(X[c])
+            X[c] = pd.Categorical(X[c], categories=lv) if lv is not None else pd.Categorical(X[c])
 
-    # Numériques = toutes les autres
     num_cols = [c for c in feature_cols if c not in cat_cols]
     for c in num_cols:
         if c not in X.columns:
             continue
-        # conversion oui/non -> 1/0 uniquement si "numérique" (donc non cat)
         X[c] = X[c].apply(lambda v: yn_to_num_if_needed(v, col_is_numeric=True))
-        X[c] = pd.to_numeric(X[c], errors="coerce")  # non convertible -> NA (comme NA)
+        X[c] = pd.to_numeric(X[c], errors="coerce")
     return X
 
 def cat_from_p_like_R(p: float) -> str:
-    # EXACT comme ton code R (cheval unique)
     if p < 0.25:
         return "Pas de Lyme ou informations insuffisantes"
     if p < 0.50:
@@ -386,18 +389,15 @@ def cat_from_p_like_R(p: float) -> str:
     return "Lyme sûr"
 
 # ============================================================
-# Topbar (comme maquette)
+# Topbar (logo minilyrae.png)
 # ============================================================
 st.markdown(
     f"""
     <div class="lyrae-topbar">
       <div class="lyrae-topbar-inner">
         <div class="lyrae-brand">
-          <div class="lyrae-mark" title="{APP_BRAND}">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M6 14c2.5-5.5 7-8 12-8 0 0-2 3-2 4 0 0 3 0 4 2 0 0-3 1-4 3 0 0-1 5-6 5-2 0-4-1-4-6z" fill="rgba(14,59,53,.92)"/>
-              <circle cx="17.2" cy="7.8" r="0.9" fill="rgba(255,255,255,.9)"/>
-            </svg>
+          <div class="lyrae-logo" title="{APP_BRAND}">
+            <img src="{MINI_LOGO_URL}" alt="{APP_BRAND}">
           </div>
           <span>{APP_BRAND}</span>
         </div>
@@ -411,7 +411,7 @@ st.markdown(
 )
 
 # ============================================================
-# Sidebar: chemins (on garde, mais discret)
+# Sidebar: chemins
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Configuration")
@@ -432,38 +432,117 @@ except Exception as e:
 analysis_cols_set = set(analysis_cols)
 
 # ============================================================
-# Navigation (landing -> evaluation)
+# Navigation (landing -> evaluation) — 1 clic + rerun
 # ============================================================
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
 
 def goto(page: str):
     st.session_state["page"] = page
+    st.rerun()
 
 # ============================================================
-# Widgets (champ vide => NA) — mais en UI plus ordonnée
+# Libellés "questions" (Oui/Non) — sans option NA visible
 # ============================================================
+QUESTION = {
+    "Age_du_cheval": "Quel est l’âge du cheval (années) ?",
+    "Sexe": "Quel est le sexe du cheval ?",
+    "Type_de_cheval": "Quel est le type de cheval ?",
+    "Season": "Quelle est la saison au moment de la consultation ?",
+
+    "Classe de risque": "Quel est le niveau de risque (SPF / zone à risque) ?",
+    "Classe_de_risque": "Quel est le niveau de risque (autre variable) ?",
+    "Exterieur_vegetalisé": "Le cheval a-t-il accès à un extérieur végétalisé ?",
+    "Freq_acces_exterieur_sem": "Combien de sorties par semaine (accès extérieur) ?",
+    "Tiques_semaines_précédentes": "Des tiques ont-elles été observées ces dernières semaines ?",
+
+    "Examen_clinique": "Un examen clinique a-t-il été réalisé ?",
+
+    "Abattement": "Présente-t-il de l’abattement ?",
+    "Mauvaise_performance": "Présente-t-il une baisse de performance ?",
+    "Douleurs_diffuses": "Présente-t-il des douleurs diffuses ?",
+    "Boiterie": "Présente-t-il une boiterie ?",
+
+    "Meningite": "Suspicion de méningite ?",
+    "Radiculonevrite": "Suspicion de radiculonévrite ?",
+    "Troubles_de_la_demarche": "Troubles de la démarche ?",
+    "Dysphagie": "Dysphagie ?",
+    "Fasciculations_musculaires": "Fasciculations musculaires ?",
+
+    "Uveite_bilaterale": "Uvéite bilatérale ?",
+    "Cecite_avec_cause_inflammatoire": "Cécité avec cause inflammatoire suspectée ?",
+    "Synechies": "Synéchies ?",
+    "Atrophie": "Atrophie ?",
+    "Dyscories": "Dyscories ?",
+    "Myosis": "Myosis ?",
+
+    "Synovite_avec_epanchement_articulaire": "Synovite avec épanchement articulaire ?",
+    "Pseudolyphome_cutane": "Pseudolymphome cutané ?",
+    "Pododermatite": "Pododermatite ?",
+
+    "piroplasmose_neg": "Piroplasmose exclue (test négatif) ?",
+    "ehrlichiose_neg": "Ehrlichiose exclue (test négatif) ?",
+    "ehrlichiose_negatif": "Ehrlichiose exclue (test négatif) ?",
+    "Bilan_sanguin_normal": "Bilan sanguin normal ?",
+    "NFS_normale": "NFS normale ?",
+    "Parametres_musculaires_normaux": "Paramètres musculaires normaux ?",
+    "Parametres_renaux_normaux": "Paramètres rénaux normaux ?",
+    "Parametres_hepatiques_normaux": "Paramètres hépatiques normaux ?",
+    "SAA_normal": "SAA normale ?",
+    "Fibrinogène_normal": "Fibrinogène normal ?",
+
+    "ELISA_pos": "ELISA positif ?",
+    "ELISA_OspA_pos": "ELISA OspA positif ?",
+    "ELISA_OspF_pos": "ELISA OspF positif ?",
+    "ELISA_p39": "ELISA p39 positif ?",
+    "WB_pos": "Western Blot positif ?",
+    "PCR_sang_pos": "PCR sang positive ?",
+    "SNAP_C6_pos": "SNAP C6 positif ?",
+    "IFAT_pos": "IFAT positif ?",
+
+    "PCR_LCR_pos": "PCR LCR positive ?",
+    "PCR_synoviale_pos": "PCR synoviale positive ?",
+    "PCR_peau_pos": "PCR peau positive ?",
+    "PCR_humeur_aqueuse_pos": "PCR humeur aqueuse positive ?",
+    "PCR_tissu_nerveux_pos": "PCR tissu nerveux positif ?",
+    "PCR_liquide_articulaire_pos": "PCR liquide articulaire positive ?",
+    "LCR_pleiocytose": "LCR : pléiocytose ?",
+    "LCR_proteines_augmentees": "LCR : protéines augmentées ?",
+
+    "IHC_tissulaire_pos": "Immunohistochimie tissulaire positive ?",
+    "Coloration_argent_pos": "Coloration argent positive ?",
+    "FISH_tissulaire_pos": "FISH tissulaire positive ?",
+    "CVID": "CVID ?",
+    "Hypoglobulinemie": "Hypogammaglobulinémie ?",
+}
+
+YES_NO_OPTS = ["Oui", "Non"]
+
 def has(col):
     return col in feature_cols
 
+def question_label(col: str) -> str:
+    return QUESTION.get(col, col)
+
 def input_widget(col: str, key: str):
     """
-    IMPORTANT:
-    - si utilisateur ne renseigne pas -> NA
-    - catégorielles: selectbox avec (NA)
-    - binaires fréquents: radio (NA/0/1)
-    - numériques: text_input (vide => NA) pour éviter toute valeur imposée
+    - Pas d'option "(NA)" visible.
+    - Si l'utilisateur ne choisit rien => None => NA en arrière-plan.
+    - Les variables binaires sont demandées en Oui/Non (pas 0/1).
     """
     if not has(col):
         return None
 
+    label = question_label(col)
+
+    # Catégorielles du modèle (ex: Season, Type_de_cheval, Sexe...) -> pas de NA visible, mais index=None
     if col in cat_cols:
         lv = factor_levels.get(col, [])
-        options = ["(NA)"] + [str(x) for x in lv]
-        choice = st.selectbox(col, options=options, index=0, key=key)
-        return pd.NA if choice == "(NA)" else choice
+        # Streamlit: index=None => aucune sélection => renvoie None
+        choice = st.selectbox(label, options=[str(x) for x in lv], index=None, placeholder="Sélectionner…", key=key)
+        return pd.NA if choice is None else choice
 
-    # heuristique binaire
+    # Binaires (oui/non) -> selectbox (permet "aucun choix" via index=None)
     bin_like = (
         col.endswith(("_neg", "_normal", "_normale")) or
         col.startswith(("ELISA", "WB", "PCR", "SNAP", "IFAT")) or
@@ -478,18 +557,15 @@ def input_widget(col: str, key: str):
         )
     )
     if bin_like:
-        choice = st.radio(col, options=["(NA)", "0", "1"], horizontal=True, index=0, key=key)
-        if choice == "(NA)":
-            return pd.NA
-        return int(choice)
+        choice = st.selectbox(label, options=YES_NO_OPTS, index=None, placeholder="Choisir…", key=key)
+        return pd.NA if choice is None else choice
 
-    # numériques / autres : champ texte vide => NA
-    raw = st.text_input(col, value="", placeholder="Laisser vide si inconnu", key=key)
+    # Numériques / autres : champ texte vide => NA
+    raw = st.text_input(label, value="", placeholder="Laisser vide si inconnu", key=key)
     return pd.NA if raw.strip() == "" else raw.strip()
 
 # ============================================================
-# HOME (comme ta maquette) — CHANGEMENT UNIQUEMENT ICI :
-# Remplacement du SVG par l'image Lyrae.png du repo GitHub
+# HOME
 # ============================================================
 if st.session_state["page"] == "home":
     st.markdown(
@@ -531,27 +607,25 @@ if st.session_state["page"] == "home":
         """,
         unsafe_allow_html=True
     )
-
     st.stop()
 
 # ============================================================
-# EVALUATION (le reste inchangé)
+# EVALUATION
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
-st.markdown("<div class='lyrae-page-sub'>Renseignez ce que vous avez. Laissez vide si inconnu : la variable sera considérée comme NA.</div>", unsafe_allow_html=True)
+st.markdown("<div class='lyrae-page-sub'>Renseignez ce que vous avez. Si vous ne sélectionnez rien, la variable sera considérée comme manquante (NA).</div>", unsafe_allow_html=True)
 
-# ---- barre d’actions haut
 top_left, top_mid, top_right = st.columns([1.2, 1.0, 0.8])
 with top_left:
     if st.button("⬅ Retour accueil"):
         goto("home")
 with top_mid:
-    st.markdown("<div class='lyrae-chip'>Modèle CatBoost chargé ✅</div>", unsafe_allow_html=True)
+    st.markdown("<div class='lyrae-chip'>Modèle prêt ✅</div>", unsafe_allow_html=True)
 with top_right:
     st.caption("")
 
 # ============================================================
-# Catégories / sous-catégories (demandé)
+# Catégories / sous-catégories
 # ============================================================
 tab_identity, tab_context, tab_exclusion, tab_signs, tab_biology, tab_advanced = st.tabs([
     "Identité", "Contexte", "Diagnostic d'exclusion", "Signes cliniques", "Biologie spécifique", "Avancé"
@@ -599,8 +673,6 @@ with tab_context:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Contexte & exposition</h3>", unsafe_allow_html=True)
 
-    st.caption("Inclut l’environnement, l’accès extérieur et les indicateurs d’exposition. Laisser vide si inconnu.")
-
     st.markdown("#### Environnement / risque")
     colA, colB = st.columns(2)
     with colA:
@@ -630,7 +702,6 @@ with tab_context:
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
-    st.caption("Renseignez les éléments disponibles pour exclure d’autres causes (ou objectiver l’état général).")
 
     st.markdown("#### Examen clinique")
     col1, col2 = st.columns(2)
@@ -671,7 +742,6 @@ with tab_exclusion:
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Signes cliniques</h3>", unsafe_allow_html=True)
-    st.caption("Renseignez uniquement les signes observés. Laisser vide si non évalué / inconnu.")
 
     st.markdown("#### Signes généraux")
     col1, col2 = st.columns(2)
@@ -731,7 +801,6 @@ with tab_signs:
 with tab_biology:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Biologie spécifique (Bbsl)</h3>", unsafe_allow_html=True)
-    st.caption("Examens spécifiques (sérologies, PCR, LCR, histologie, immuno).")
 
     st.markdown("#### Sérologies")
     col1, col2 = st.columns(2)
@@ -769,12 +838,11 @@ with tab_biology:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Avancé
+# Avancé (sans NA visible)
 # -----------------------------
 with tab_advanced:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Avancé</h3>", unsafe_allow_html=True)
-    st.caption("Variables supplémentaires provenant directement de feature_cols (optionnel).")
 
     extra_candidates = [
         c for c in feature_cols
@@ -794,19 +862,10 @@ with tab_advanced:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
-# ACTIONS (en bas)
+# ACTIONS (bas)
 # ============================================================
 st.markdown("---")
-action_left, action_right = st.columns([1, 1])
-
-with action_left:
-    st.subheader("🔮 Lancer la prédiction")
-    submitted = st.button("Prédire P(Lyme)")
-
-with action_right:
-    st.subheader("🧾 Rappel")
-    st.caption("Champ vide ⇒ NA. *_missing_code auto (analyses=2 MNAR, autres=1 MCAR).")
-    st.caption("Catégorie: <0.25 / <0.50 / <0.75 / ≥0.75 (identique à ton script).")
+submitted = st.button("Prédire P(Lyme)", use_container_width=True)
 
 # ============================================================
 # Predict (EXACT logique du bloc R "cheval unique")
@@ -819,7 +878,6 @@ if submitted:
 
     pool_one = Pool(X, cat_features=cat_idx)
     p_one = float(model.predict_proba(pool_one)[:, 1][0])
-
     cat = cat_from_p_like_R(p_one)
 
     st.markdown("## 📌 Résultat")
@@ -831,7 +889,7 @@ if submitted:
     st.write("### Aperçu des variables réellement prises en compte (non-NA)")
     non_na_cols = X.columns[X.notna().iloc[0]].tolist()
     if len(non_na_cols) == 0:
-        st.info("Toutes les variables sont NA (aucune information renseignée).")
+        st.info("Aucune information n’a été renseignée.")
     else:
         st.dataframe(X[non_na_cols], use_container_width=True)
 
