@@ -25,6 +25,9 @@ APP_SUBTITLE = "Analyse structurée basée sur les données cliniques, biologiqu
 MODEL_DEFAULT = "equine_lyme_catboost.cbm"
 META_DEFAULT  = "equine_lyme_catboost_meta.json"
 
+# --- Image du repository GitHub (RAW) pour la bannière centrale
+HERO_IMAGE_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
+
 # --- Liste des colonnes "analyses" (MNAR si NA) -> EXACT comme ton code
 analysis_cols = [
   # bilans / exclusions
@@ -485,9 +488,8 @@ def input_widget(col: str, key: str):
     return pd.NA if raw.strip() == "" else raw.strip()
 
 # ============================================================
-# HOME (comme ta maquette) — CORRECTION ICI :
-# Le SVG doit être rendu en HTML, donc il faut l'encapsuler dans st.markdown(..., unsafe_allow_html=True).
-# Le problème que tu vois (les balises SVG affichées en texte) arrive si le bloc n'est pas interprété en HTML.
+# HOME (comme ta maquette) — CHANGEMENT UNIQUEMENT ICI :
+# Remplacement du SVG par l'image Lyrae.png du repo GitHub
 # ============================================================
 if st.session_state["page"] == "home":
     st.markdown(
@@ -501,77 +503,9 @@ if st.session_state["page"] == "home":
     )
 
     st.markdown(
-        """
+        f"""
         <div class="lyrae-illustration">
-          <svg viewBox="0 0 1200 280" width="100%" height="280" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <linearGradient id="fog" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
-                <stop offset="55%" stop-color="#f6f3ec" stop-opacity="0.96"/>
-                <stop offset="100%" stop-color="#efece6" stop-opacity="0.98"/>
-              </linearGradient>
-              <linearGradient id="forest" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0%" stop-color="#cfe1d7"/>
-                <stop offset="55%" stop-color="#dbe8d8"/>
-                <stop offset="100%" stop-color="#c6d6cf"/>
-              </linearGradient>
-            </defs>
-
-            <rect x="0" y="0" width="1200" height="280" fill="url(#fog)"/>
-            <rect x="0" y="130" width="1200" height="150" fill="url(#forest)" opacity="0.65"/>
-
-            <!-- simplified trees -->
-            <g opacity="0.35" fill="#0e3b35">
-              <polygon points="80,250 105,190 130,250"/>
-              <polygon points="155,250 180,175 205,250"/>
-              <polygon points="240,250 265,185 290,250"/>
-              <polygon points="980,250 1005,190 1030,250"/>
-              <polygon points="1055,250 1080,175 1105,250"/>
-              <polygon points="1140,250 1165,185 1190,250"/>
-            </g>
-
-            <!-- horse silhouette -->
-            <g transform="translate(210,170) scale(1.1)" fill="#0e3b35" opacity="0.90">
-              <path d="M-90,55 C-70,10 -20,-10 40,5 C55,8 75,20 85,35 C90,45 88,55 80,60
-                       C70,65 60,58 55,52 C52,66 45,78 30,86 C10,98 -20,95 -35,80
-                       L-55,95 L-62,90 L-55,75 C-70,74 -85,70 -90,55 Z"/>
-              <rect x="-60" y="90" width="10" height="55" rx="2"/>
-              <rect x="-20" y="92" width="10" height="55" rx="2"/>
-              <rect x="20" y="90" width="10" height="55" rx="2"/>
-              <rect x="55" y="85" width="10" height="60" rx="2"/>
-            </g>
-
-            <!-- DNA + plus + magnifier tick -->
-            <g transform="translate(560,70)">
-              <!-- dna -->
-              <g transform="translate(0,50)" stroke="#2f6b61" stroke-width="8" fill="none" opacity="0.85">
-                <path d="M0,0 C40,30 40,70 0,100"/>
-                <path d="M70,0 C30,30 30,70 70,100"/>
-                <line x1="15" y1="20" x2="55" y2="20" />
-                <line x1="15" y1="50" x2="55" y2="50" />
-                <line x1="15" y1="80" x2="55" y2="80" />
-              </g>
-              <!-- check circle -->
-              <circle cx="120" cy="105" r="26" fill="#2f6b61" opacity="0.22"/>
-              <path d="M110,105 l8,8 l16,-18" stroke="#2f6b61" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-              <!-- plus -->
-              <g transform="translate(170,82)" fill="#b06a2a" opacity="0.95">
-                <rect x="0" y="25" width="70" height="18" rx="6"/>
-                <rect x="26" y="0" width="18" height="70" rx="6"/>
-              </g>
-              <!-- magnifier -->
-              <g transform="translate(310,38)" opacity="0.92">
-                <circle cx="90" cy="100" r="70" fill="none" stroke="#0e3b35" stroke-width="16"/>
-                <rect x="140" y="150" width="100" height="26" rx="12" transform="rotate(35 140 150)" fill="#0e3b35"/>
-                <!-- tick simplified -->
-                <g transform="translate(60,78)" fill="#0e3b35">
-                  <ellipse cx="30" cy="30" rx="18" ry="24"/>
-                  <circle cx="30" cy="8" r="10"/>
-                  <rect x="10" y="28" width="40" height="10" rx="5"/>
-                </g>
-              </g>
-            </g>
-          </svg>
+          <img src="{HERO_IMAGE_URL}" alt="LYRAE" style="width:100%; height:auto; display:block;">
         </div>
         """,
         unsafe_allow_html=True
