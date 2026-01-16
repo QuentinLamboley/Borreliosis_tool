@@ -184,25 +184,6 @@ div[data-testid="stSelectbox"] *{
   justify-content:center;
   margin-top: 18px;
 }
-.lyrae-cta{
-  width: min(520px, 95%);
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, var(--lyrae-accent-2) 0%, var(--lyrae-accent) 100%);
-  color: white;
-  font-weight: 800;
-  font-size: 18px;
-  box-shadow: 0 12px 24px rgba(176,106,42,.30);
-  border: 2px solid rgba(255,255,255,.35);
-  text-align:center;
-}
-.lyrae-cta small{
-  display:block;
-  margin-top: 3px;
-  opacity: .85;
-  font-weight: 600;
-  font-size: 12px;
-}
 .lyrae-disclaimer{
   margin-top: 18px;
   color: #6d7a79;
@@ -504,7 +485,9 @@ def input_widget(col: str, key: str):
     return pd.NA if raw.strip() == "" else raw.strip()
 
 # ============================================================
-# HOME (comme ta maquette)
+# HOME (comme ta maquette) — CORRECTION ICI :
+# Le SVG doit être rendu en HTML, donc il faut l'encapsuler dans st.markdown(..., unsafe_allow_html=True).
+# Le problème que tu vois (les balises SVG affichées en texte) arrive si le bloc n'est pas interprété en HTML.
 # ============================================================
 if st.session_state["page"] == "home":
     st.markdown(
@@ -517,7 +500,6 @@ if st.session_state["page"] == "home":
         unsafe_allow_html=True
     )
 
-    # Illustration (SVG simple, style “bandeau”)
     st.markdown(
         """
         <div class="lyrae-illustration">
@@ -595,7 +577,6 @@ if st.session_state["page"] == "home":
         unsafe_allow_html=True
     )
 
-    # CTA (vrai bouton streamlit, mais look “maquette”)
     st.markdown('<div class="lyrae-cta-wrap">', unsafe_allow_html=True)
     if st.button("Commencer une évaluation clinique  ➜", use_container_width=True):
         goto("eval")
@@ -620,7 +601,7 @@ if st.session_state["page"] == "home":
     st.stop()
 
 # ============================================================
-# EVALUATION (architecture retravaillée + catégories demandées)
+# EVALUATION (le reste inchangé)
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
 st.markdown("<div class='lyrae-page-sub'>Renseignez ce que vous avez. Laissez vide si inconnu : la variable sera considérée comme NA.</div>", unsafe_allow_html=True)
@@ -637,17 +618,6 @@ with top_right:
 
 # ============================================================
 # Catégories / sous-catégories (demandé)
-# - Nom du cheval dans Identité (hors modèle)
-# - Tout le contexte (y compris exposition) dans Contexte
-# - "Clinique / examen" devient Diagnostic d'exclusion
-# - Tous les signes cliniques regroupés en sous-catégories
-# ============================================================
-
-# ---- Identification (hors modèle)
-horse_name_default = st.session_state.get("horse_name", "CHEVAL_1")
-
-# ============================================================
-# TABS (propre, ordonné, “outil pro”)
 # ============================================================
 tab_identity, tab_context, tab_exclusion, tab_signs, tab_biology, tab_advanced = st.tabs([
     "Identité", "Contexte", "Diagnostic d'exclusion", "Signes cliniques", "Biologie spécifique", "Avancé"
@@ -664,13 +634,12 @@ with tab_identity:
 
     c1, c2 = st.columns(2)
     with c1:
-        horse_name = st.text_input("Nom du cheval", value=horse_name_default, placeholder="Ex: TAGADA")
+        horse_name = st.text_input("Nom du cheval", value=st.session_state.get("horse_name", "CHEVAL_1"), placeholder="Ex: TAGADA")
     with c2:
         st.text_input("Identifiant dossier (optionnel)", value="", placeholder="Ex: RESOLVE-000123")
 
     st.session_state["horse_name"] = horse_name
 
-    # Variables d'identité si présentes dans feature_cols (sinon non affichées)
     c3, c4 = st.columns(2)
     with c3:
         if has("Age_du_cheval"):
@@ -684,7 +653,6 @@ with tab_identity:
         if has("Season"):
             inputs["Season"] = input_widget("Season", key="id_Season")
     with c6:
-        # NOTE: "Sexe" est souvent retiré des features (donc n’apparaîtra pas)
         if has("Sexe"):
             inputs["Sexe"] = input_widget("Sexe", key="id_Sexe")
 
@@ -699,7 +667,6 @@ with tab_context:
 
     st.caption("Inclut l’environnement, l’accès extérieur et les indicateurs d’exposition. Laisser vide si inconnu.")
 
-    # Sous-catégorie: Environnement / risque
     st.markdown("#### Environnement / risque")
     colA, colB = st.columns(2)
     with colA:
@@ -713,7 +680,6 @@ with tab_context:
         if has("Freq_acces_exterieur_sem"):
             inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
 
-    # Sous-catégorie: Exposition directe
     st.markdown("#### Exposition directe")
     colC, colD = st.columns(2)
     with colC:
@@ -725,14 +691,13 @@ with tab_context:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Diagnostic d'exclusion (ex-clinique/examen + bilans/exclusions)
+# Diagnostic d'exclusion
 # -----------------------------
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
     st.caption("Renseignez les éléments disponibles pour exclure d’autres causes (ou objectiver l’état général).")
 
-    # Sous-catégorie: Examen clinique
     st.markdown("#### Examen clinique")
     col1, col2 = st.columns(2)
     with col1:
@@ -741,7 +706,6 @@ with tab_exclusion:
     with col2:
         st.caption("")
 
-    # Sous-catégorie: Co-infections / diagnostics différentiels
     st.markdown("#### Co-infections / diagnostics différentiels")
     col3, col4 = st.columns(2)
     with col3:
@@ -754,7 +718,6 @@ with tab_exclusion:
     with col4:
         st.caption("")
 
-    # Sous-catégorie: Bilan sanguin / inflammation / organes
     st.markdown("#### Bilan sanguin / inflammation / organes")
     col5, col6 = st.columns(2)
     with col5:
@@ -769,14 +732,13 @@ with tab_exclusion:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Signes cliniques (tous regroupés en sous-catégories)
+# Signes cliniques
 # -----------------------------
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Signes cliniques</h3>", unsafe_allow_html=True)
     st.caption("Renseignez uniquement les signes observés. Laisser vide si non évalué / inconnu.")
 
-    # Sous-catégorie: généraux
     st.markdown("#### Signes généraux")
     col1, col2 = st.columns(2)
     with col1:
@@ -788,7 +750,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"sg_{c}")
 
-    # Sous-catégorie: neurologiques
     st.markdown("#### Neurologique")
     col3, col4 = st.columns(2)
     with col3:
@@ -800,7 +761,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"sn_{c}")
 
-    # Sous-catégorie: oculaire
     st.markdown("#### Oculaire")
     col5, col6 = st.columns(2)
     with col5:
@@ -812,7 +772,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"so_{c}")
 
-    # Sous-catégorie: articulaire
     st.markdown("#### Articulaire")
     col7, col8 = st.columns(2)
     with col7:
@@ -821,7 +780,6 @@ with tab_signs:
     with col8:
         st.caption("")
 
-    # Sous-catégorie: cutané / autres
     st.markdown("#### Cutané / autres")
     col9, col10 = st.columns(2)
     with col9:
@@ -834,7 +792,7 @@ with tab_signs:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Biologie spécifique (sérologies / PCR / LCR / histo / immuno)
+# Biologie spécifique
 # -----------------------------
 with tab_biology:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -877,7 +835,7 @@ with tab_biology:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Avancé (variables restantes non *_missing_code)
+# Avancé
 # -----------------------------
 with tab_advanced:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -893,7 +851,6 @@ with tab_advanced:
     if len(extra_candidates) == 0:
         st.info("Aucune variable supplémentaire à afficher.")
     else:
-        # affichage en colonnes
         colA, colB = st.columns(2)
         for i, c in enumerate(extra_candidates):
             target = colA if i % 2 == 0 else colB
@@ -921,23 +878,14 @@ with action_right:
 # Predict (EXACT logique du bloc R "cheval unique")
 # ============================================================
 if submitted:
-    # 1) Template EXACT attendu par CatBoost = toutes les feature_cols
     X = build_template(feature_cols)
-
-    # 2) Remplir ce qu'on a (intersection). Si vide => NA (déjà)
     X = apply_inputs_to_template(X, inputs)
-
-    # 3) Remplir automatiquement les *_missing_code selon NA (NA analyse => 2, sinon 1)
     X = fill_missing_code_like_R(X, analysis_cols_set)
-
-    # 4) Aligner types EXACTEMENT (cat->categorical niveaux, num->float)
     X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
-    # 5) Pool + Prédiction CatBoost (Probability)
     pool_one = Pool(X, cat_features=cat_idx)
     p_one = float(model.predict_proba(pool_one)[:, 1][0])
 
-    # 6) Catégorie EXACT comme ton code R (cheval unique)
     cat = cat_from_p_like_R(p_one)
 
     st.markdown("## 📌 Résultat")
@@ -946,7 +894,6 @@ if submitted:
     b.metric("P_Lyme", f"{p_one:.3f}")
     c.metric("Catégorie", cat)
 
-    # aperçu des colonnes non NA
     st.write("### Aperçu des variables réellement prises en compte (non-NA)")
     non_na_cols = X.columns[X.notna().iloc[0]].tolist()
     if len(non_na_cols) == 0:
@@ -954,7 +901,6 @@ if submitted:
     else:
         st.dataframe(X[non_na_cols], use_container_width=True)
 
-    # Export CSV (ligne complète)
     out = X.copy()
     out.insert(0, "Nom_du_Cheval", st.session_state.get("horse_name", "CHEVAL_1"))
     out["P_Lyme"] = p_one
