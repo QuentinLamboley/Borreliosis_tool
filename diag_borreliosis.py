@@ -348,12 +348,14 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
     return X
 
 def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list, factor_levels: dict):
+    # cat
     for c in cat_cols:
         if c in X.columns:
             lv = factor_levels.get(c, None)
             X[c] = X[c].astype("string")
             X[c] = pd.Categorical(X[c], categories=lv) if lv is not None else pd.Categorical(X[c])
 
+    # num
     num_cols = [c for c in feature_cols if c not in cat_cols]
     for c in num_cols:
         if c not in X.columns:
@@ -381,9 +383,10 @@ def cat_color(cat: str) -> str:
     return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
 
 # ============================================================
-# Geocode + MAP (FIX NETTETÉ)
-# - On remplace le rendu pydeck (souvent flou car canvas)
-#   par une carte Folium rendue en HTML (tiles nettes)
+# Geocode + MAP (sans folium) — FIX ModuleNotFoundError
+# - On utilise st.map (aucune dépendance externe).
+# - Rendu plus net : width_container + hauteur + zoom via view_state
+#   => on passe par pydeck intégré à Streamlit.
 # ============================================================
 @st.cache_data(show_spinner=False)
 def geocode_address(address: str):
@@ -406,30 +409,10 @@ def geocode_address(address: str):
         return None
 
 def render_map(lat: float, lon: float, zoom: int = 14):
-    # ✅ Rendu net: folium + streamlit-folium (tiles raster)
-    import folium
-    from streamlit_folium import st_folium
-
-    m = folium.Map(location=[lat, lon], zoom_start=zoom, control_scale=True, tiles=None)
-    # CartoDB DarkMatter est net et proche de ton rendu sombre,
-    # mais on garde une cohérence "vert/beige" ailleurs dans l'app.
-    folium.TileLayer(
-        tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        attr="&copy; OpenStreetMap contributors &copy; CARTO",
-        name="Fond sombre",
-        max_zoom=19,
-        subdomains="abcd",
-        detect_retina=True,  # ✅ crucial: charge les tiles @2x (net sur écrans HiDPI)
-    ).add_to(m)
-
-    folium.Marker(
-        location=[lat, lon],
-        tooltip="Localisation du cheval",
-        icon=folium.Icon(color="green", icon="info-sign"),
-    ).add_to(m)
-
-    # ✅ height élevé pour éviter l'interpolation / flou dû au redimensionnement
-    st_folium(m, width=None, height=420)
+    # ✅ aucune dépendance externe
+    # ✅ rendu plus net : height + use_container_width + zoom
+    df_map = pd.DataFrame([{"lat": lat, "lon": lon}])
+    st.map(df_map, zoom=zoom, use_container_width=True, height=420)
 
 # ============================================================
 # Topbar
@@ -861,6 +844,9 @@ with tab_results:
 
             X = build_template(feature_cols)
             X = apply_inputs_to_template(X, inputs)
+
+            # Convertir "Oui/Non" saisis en 1/0 dans les colonnes numériques
+            # (la logique yes/no->num est déjà dans coerce_like_train_python)
             X = fill_missing_code_like_R(X, set(analysis_cols))
             X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
