@@ -443,9 +443,7 @@ def geocode_address(address: str):
     if not address or address.strip() == "":
         return None
     url = f"https://nominatim.openstreetmap.org/search?format=json&limit=1&q={quote_plus(address)}"
-    headers = {
-        "User-Agent": "LYRAE-Streamlit/1.0 (contact: none)"
-    }
+    headers = {"User-Agent": "LYRAE-Streamlit/1.0 (contact: none)"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
@@ -781,11 +779,6 @@ with tab_context:
     with a4:
         cp = st.text_input("Code postal", value=st.session_state.get("addr_cp", ""), placeholder="CP", key="addr_cp")
 
-    st.session_state["addr_num"] = num
-    st.session_state["addr_street"] = street
-    st.session_state["addr_city"] = city
-    st.session_state["addr_cp"] = cp
-
     locate_col, _ = st.columns([0.34, 0.66])
     with locate_col:
         do_locate = st.button("Localiser sur la carte", use_container_width=True)
@@ -805,7 +798,6 @@ with tab_context:
     if geo is not None:
         render_map(geo["lat"], geo["lon"], zoom=14)
     else:
-        # carte par défaut (France) tant que rien n'est localisé
         render_map(46.603354, 1.888334, zoom=5)
 
     st.markdown("</div>", unsafe_allow_html=True)
