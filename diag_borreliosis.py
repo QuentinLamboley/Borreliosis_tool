@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from catboost import CatBoostClassifier, Pool
+import time
 
 # ============================================================
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
@@ -64,7 +65,7 @@ header {visibility: hidden;}
 
 /* ----- palette ----- */
 :root{
-  --g900:#0e3b35;
+  --g900:#0e3b35;    /* vert sapin */
   --g850:#124640;
   --g800:#154b43;
   --g700:#1f5a51;
@@ -134,19 +135,6 @@ header {visibility: hidden;}
   height:100%;
   display:block;
 }
-.lyrae-right{
-  display:flex;
-  align-items:center;
-  gap: 14px;
-  color: rgba(255,255,255,.92);
-  font-size: 14px;
-}
-.lyrae-pill{
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255,255,255,.10);
-  border: 1px solid rgba(255,255,255,.14);
-}
 
 /* ----- tabs visibility ----- */
 div[data-testid="stTabs"]{
@@ -167,22 +155,32 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
   box-shadow: 0 8px 18px rgba(0,0,0,.08) !important;
 }
 
-/* ----- inputs readability (keep green/beige) ----- */
-div[data-testid="stSelectbox"] > div, 
-div[data-testid="stTextInput"] > div > div, 
+/* ----- inputs readability (replace dark/black) ----- */
+div[data-testid="stSelectbox"] > div,
+div[data-testid="stTextInput"] > div > div,
 div[data-testid="stNumberInput"] > div > div {
   border-radius: 12px !important;
-  border: 1px solid rgba(14,59,53,.18) !important;
-  background: rgba(255,255,255,.75) !important;
+  border: 1px solid rgba(14,59,53,.22) !important;
+  background: rgba(255,255,255,.78) !important;
 }
-div[data-testid="stSelectbox"] label, 
-div[data-testid="stTextInput"] label, 
+
+/* Streamlit selectbox inner control sometimes uses dark bg in some themes:
+   force a sapin-tinted background and readable text */
+div[data-testid="stSelectbox"] div[role="combobox"]{
+  background: rgba(14,59,53,.08) !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(14,59,53,.20) !important;
+}
+div[data-testid="stSelectbox"] *{
+  color: rgba(14,59,53,.95) !important;
+}
+
+/* Labels */
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label,
 div[data-testid="stNumberInput"] label {
   color: rgba(14,59,53,.92) !important;
   font-weight: 700 !important;
-}
-div[data-testid="stSelectbox"] *{
-  color: rgba(14,59,53,.92) !important;
 }
 
 /* ----- hero ----- */
@@ -256,19 +254,6 @@ div[data-testid="stSelectbox"] *{
   font-weight: 780;
   color:#24474f;
 }
-.lyrae-chip{
-  display:inline-flex;
-  align-items:center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(14,59,53,.10);
-  border: 1px solid rgba(14,59,53,.18);
-  color: rgba(14,59,53,.95);
-  font-weight: 750;
-  font-size: 13px;
-  margin-bottom: 10px;
-}
 
 /* buttons */
 .stButton > button, .stDownloadButton > button{
@@ -283,6 +268,14 @@ div[data-testid="stSelectbox"] *{
 }
 .stButton > button:hover{
   filter: brightness(1.02);
+}
+
+/* centered action */
+.lyrae-action{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin-top: 8px;
 }
 </style>
 """
@@ -375,6 +368,8 @@ def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list
     for c in num_cols:
         if c not in X.columns:
             continue
+
+        # Oui/Non -> 1/0 (si applicable)
         X[c] = X[c].apply(lambda v: yn_to_num_if_needed(v, col_is_numeric=True))
         X[c] = pd.to_numeric(X[c], errors="coerce")
     return X
@@ -389,7 +384,7 @@ def cat_from_p_like_R(p: float) -> str:
     return "Lyme sûr"
 
 # ============================================================
-# Topbar (logo minilyrae.png)
+# Topbar (logo minilyrae.png) — (suppression "Outil en veille")
 # ============================================================
 st.markdown(
     f"""
@@ -401,9 +396,7 @@ st.markdown(
           </div>
           <span>{APP_BRAND}</span>
         </div>
-        <div class="lyrae-right">
-          <span class="lyrae-pill">Outil en veille</span>
-        </div>
+        <div></div>
       </div>
     </div>
     """,
@@ -535,14 +528,11 @@ def input_widget(col: str, key: str):
 
     label = question_label(col)
 
-    # Catégorielles du modèle (ex: Season, Type_de_cheval, Sexe...) -> pas de NA visible, mais index=None
     if col in cat_cols:
         lv = factor_levels.get(col, [])
-        # Streamlit: index=None => aucune sélection => renvoie None
         choice = st.selectbox(label, options=[str(x) for x in lv], index=None, placeholder="Sélectionner…", key=key)
         return pd.NA if choice is None else choice
 
-    # Binaires (oui/non) -> selectbox (permet "aucun choix" via index=None)
     bin_like = (
         col.endswith(("_neg", "_normal", "_normale")) or
         col.startswith(("ELISA", "WB", "PCR", "SNAP", "IFAT")) or
@@ -560,7 +550,6 @@ def input_widget(col: str, key: str):
         choice = st.selectbox(label, options=YES_NO_OPTS, index=None, placeholder="Choisir…", key=key)
         return pd.NA if choice is None else choice
 
-    # Numériques / autres : champ texte vide => NA
     raw = st.text_input(label, value="", placeholder="Laisser vide si inconnu", key=key)
     return pd.NA if raw.strip() == "" else raw.strip()
 
@@ -613,22 +602,22 @@ if st.session_state["page"] == "home":
 # EVALUATION
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
-st.markdown("<div class='lyrae-page-sub'>Renseignez ce que vous avez. Si vous ne sélectionnez rien, la variable sera considérée comme manquante (NA).</div>", unsafe_allow_html=True)
 
 top_left, top_mid, top_right = st.columns([1.2, 1.0, 0.8])
 with top_left:
     if st.button("⬅ Retour accueil"):
         goto("home")
 with top_mid:
-    st.markdown("<div class='lyrae-chip'>Modèle prêt ✅</div>", unsafe_allow_html=True)
+    st.write("")  # (suppression "Modèle prêt ✅")
 with top_right:
     st.caption("")
 
 # ============================================================
-# Catégories / sous-catégories
+# Catégories / sous-catégories (suppression onglet "Avancé")
+# - le contenu "Avancé" est déplacé en fin de "Signes cliniques"
 # ============================================================
-tab_identity, tab_context, tab_exclusion, tab_signs, tab_biology, tab_advanced = st.tabs([
-    "Identité", "Contexte", "Diagnostic d'exclusion", "Signes cliniques", "Biologie spécifique", "Avancé"
+tab_identity, tab_context, tab_exclusion, tab_signs, tab_biology = st.tabs([
+    "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Biologie spécifique"
 ])
 
 inputs = {}
@@ -667,32 +656,34 @@ with tab_identity:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Contexte (inclut exposition)
+# Contexte & exposition (mieux organisé comme le screen)
+# - 2 colonnes principales
+# - à gauche : risque + exposition directe
+# - à droite : extérieur + fréquence (stack vertical)
 # -----------------------------
 with tab_context:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Contexte & exposition</h3>", unsafe_allow_html=True)
 
-    st.markdown("#### Environnement / risque")
-    colA, colB = st.columns(2)
-    with colA:
+    left, right = st.columns([1.05, 1.0], gap="large")
+
+    with left:
+        st.markdown("#### Environnement / risque")
         if has("Classe de risque"):
             inputs["Classe de risque"] = input_widget("Classe de risque", key="ctx_Classe de risque")
         if has("Classe_de_risque"):
             inputs["Classe_de_risque"] = input_widget("Classe_de_risque", key="ctx_Classe_de_risque")
-    with colB:
+
+        st.markdown("#### Exposition directe")
+        if has("Tiques_semaines_précédentes"):
+            inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
+
+    with right:
+        st.markdown("#### Milieu de vie / accès")
         if has("Exterieur_vegetalisé"):
             inputs["Exterieur_vegetalisé"] = input_widget("Exterieur_vegetalisé", key="ctx_Exterieur_vegetalisé")
         if has("Freq_acces_exterieur_sem"):
             inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
-
-    st.markdown("#### Exposition directe")
-    colC, colD = st.columns(2)
-    with colC:
-        if has("Tiques_semaines_précédentes"):
-            inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
-    with colD:
-        st.caption("")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -737,7 +728,7 @@ with tab_exclusion:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Signes cliniques
+# Signes cliniques + (ex-Avancé)
 # -----------------------------
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -793,6 +784,20 @@ with tab_signs:
     with col10:
         st.caption("")
 
+    # --- ex-Avancé : variables supplémentaires intégrées ici, en "questions" comme le reste
+    extra_candidates = [
+        c for c in feature_cols
+        if c not in inputs
+        and not c.endswith("_missing_code")
+    ]
+    if len(extra_candidates) > 0:
+        st.markdown("#### Autres informations (si disponibles)")
+        colA, colB = st.columns(2)
+        for i, c in enumerate(extra_candidates):
+            target = colA if i % 2 == 0 else colB
+            with target:
+                inputs[c] = input_widget(c, key=f"extra_{c}")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
@@ -837,48 +842,28 @@ with tab_biology:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# -----------------------------
-# Avancé (sans NA visible)
-# -----------------------------
-with tab_advanced:
-    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Avancé</h3>", unsafe_allow_html=True)
-
-    extra_candidates = [
-        c for c in feature_cols
-        if c not in inputs
-        and not c.endswith("_missing_code")
-    ]
-
-    if len(extra_candidates) == 0:
-        st.info("Aucune variable supplémentaire à afficher.")
-    else:
-        colA, colB = st.columns(2)
-        for i, c in enumerate(extra_candidates):
-            target = colA if i % 2 == 0 else colB
-            with target:
-                inputs[c] = input_widget(c, key=f"adv_{c}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
 # ============================================================
-# ACTIONS (bas)
+# ACTIONS (bas) + "cheval qui galope" pendant le chargement
 # ============================================================
 st.markdown("---")
-submitted = st.button("Prédire P(Lyme)", use_container_width=True)
+submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
 # ============================================================
 # Predict (EXACT logique du bloc R "cheval unique")
 # ============================================================
 if submitted:
-    X = build_template(feature_cols)
-    X = apply_inputs_to_template(X, inputs)
-    X = fill_missing_code_like_R(X, analysis_cols_set)
-    X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
+    with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
+        # petite pause pour rendre l’animation perceptible même si prédiction rapide
+        time.sleep(0.25)
 
-    pool_one = Pool(X, cat_features=cat_idx)
-    p_one = float(model.predict_proba(pool_one)[:, 1][0])
-    cat = cat_from_p_like_R(p_one)
+        X = build_template(feature_cols)
+        X = apply_inputs_to_template(X, inputs)
+        X = fill_missing_code_like_R(X, analysis_cols_set)
+        X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
+
+        pool_one = Pool(X, cat_features=cat_idx)
+        p_one = float(model.predict_proba(pool_one)[:, 1][0])
+        cat = cat_from_p_like_R(p_one)
 
     st.markdown("## 📌 Résultat")
     a, b, c = st.columns(3)
