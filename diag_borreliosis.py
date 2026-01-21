@@ -10,16 +10,6 @@ from urllib.parse import quote_plus
 
 # ============================================================
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
-# - lit un modèle CatBoost .cbm
-# - lit un meta .json (feature_cols, cat_cols, factor_levels)
-# - UI (landing page + parcours)
-# - champ non renseigné => NA (sans afficher "(NA)" à l'utilisateur)
-# - remplit automatiquement *_missing_code :
-#     NA sur analyse => 2 (MNAR)
-#     NA hors analyse => 1 (MCAR)
-#     non NA => 0
-# - prédiction P(Lyme) + classe EXACTEMENT comme ton code :
-#     <0.25 / <0.50 / <0.75 / >=0.75
 # ============================================================
 
 APP_BRAND = "LYRAE"
@@ -28,77 +18,52 @@ APP_SUBTITLE = "Analyse structurée basée sur les données cliniques, biologiqu
 MODEL_DEFAULT = "equine_lyme_catboost.cbm"
 META_DEFAULT  = "equine_lyme_catboost_meta.json"
 
-# --- Images du repository GitHub (RAW)
 HERO_IMAGE_URL  = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
 MINI_LOGO_URL   = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/minilyrae.png"
 
-# --- Liste des colonnes "analyses" (MNAR si NA) -> EXACT comme ton code
 analysis_cols = [
-  # bilans / exclusions
   "piroplasmose_neg","ehrlichiose_neg","Bilan_sanguin_normal","NFS_normale",
   "Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux",
   "SAA_normal","Fibrinogène_normal",
-
-  # sérologies / PCR sang
   "ELISA_pos","ELISA_OspA_pos","ELISA_OspF_pos","ELISA_p39","WB_pos","PCR_sang_pos","SNAP_C6_pos","IFAT_pos",
-
-  # examens ciblés / PCR locales / LCR
   "PCR_LCR_pos","PCR_synoviale_pos","PCR_peau_pos","PCR_humeur_aqueuse_pos","PCR_tissu_nerveux_pos",
   "PCR_liquide_articulaire_pos","LCR_pleiocytose","LCR_proteines_augmentees",
-
-  # histo / marquages
   "IHC_tissulaire_pos","Coloration_argent_pos","FISH_tissulaire_pos",
-
-  # immuno
   "CVID","Hypoglobulinemie"
 ]
 
-# --- Colonnes affichées dans "Résultats d'analyse" (pour éviter les doublons ailleurs)
 RESULTS_ANALYSIS_COLS = [
-    # Sérologies / séro
     "ELISA_pos", "ELISA_OspA_pos", "ELISA_OspF_pos", "ELISA_p39",
     "WB_pos", "SNAP_C6_pos", "IFAT_pos",
-
-    # PCR / prélèvements
     "PCR_sang_pos", "PCR_LCR_pos", "PCR_synoviale_pos", "PCR_liquide_articulaire_pos",
     "PCR_peau_pos", "PCR_humeur_aqueuse_pos", "PCR_tissu_nerveux_pos",
-
-    # LCR / histo / immuno
     "LCR_pleiocytose", "LCR_proteines_augmentees",
     "IHC_tissulaire_pos", "Coloration_argent_pos", "FISH_tissulaire_pos",
     "CVID", "Hypoglobulinemie",
 ]
 
-# ============================================================
-# Page config + CSS (vert & beige + onglets + inputs plus visibles)
-# ============================================================
 st.set_page_config(page_title=f"{APP_BRAND} — {APP_TITLE}", layout="wide")
 
 CSS = """
 <style>
-/* ----- hide streamlit chrome ----- */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* ----- palette ----- */
 :root{
-  --g900:#0e3b35;    /* vert sapin */
+  --g900:#0e3b35;
   --g850:#124640;
   --g800:#154b43;
-  --g700:#1f5a51;
   --beige:#f4f2ed;
   --beige2:#efe9df;
   --ink:#1d2a2a;
-  --muted:#5c6b6a;
-  --accent:#b08b5a;        /* beige doré */
+  --accent:#b08b5a;
   --accent2:#d2b48c;
   --card:#ffffffcc;
   --shadow-soft: 0 8px 22px rgba(0,0,0,.10);
   --radius: 18px;
 }
 
-/* ----- background ----- */
 .stApp{
   background: radial-gradient(1200px 600px at 50% 0%, #ffffff 0%, var(--beige) 60%, var(--beige2) 100%);
   color: var(--ink);
@@ -109,7 +74,6 @@ header {visibility: hidden;}
   max-width: 1100px;
 }
 
-/* ----- top bar ----- */
 .lyrae-topbar{
   position: sticky;
   top: 0;
@@ -153,10 +117,6 @@ header {visibility: hidden;}
   display:block;
 }
 
-/* ----- tabs visibility + highlight bar (orange -> vert sapin) ----- */
-div[data-testid="stTabs"]{
-  background: transparent;
-}
 div[data-testid="stTabs"] button[role="tab"]{
   border-radius: 12px !important;
   padding: 10px 14px !important;
@@ -171,12 +131,10 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
   border: 2px solid rgba(14,59,53,.35) !important;
   box-shadow: 0 8px 18px rgba(0,0,0,.08) !important;
 }
-/* tab underline/highlight */
 div[data-baseweb="tab-highlight"]{
   background-color: var(--g900) !important;
 }
 
-/* ----- choice inputs: encadrés vert sapin + texte blanc ----- */
 div[data-testid="stSelectbox"] div[role="combobox"]{
   background: var(--g900) !important;
   border-radius: 12px !important;
@@ -194,7 +152,6 @@ div[role="listbox"] *{
   color: #ffffff !important;
 }
 
-/* Keep text/number inputs readable (beige/white), but keep labels sapin */
 div[data-testid="stTextInput"] > div > div,
 div[data-testid="stNumberInput"] > div > div{
   border-radius: 12px !important;
@@ -202,7 +159,6 @@ div[data-testid="stNumberInput"] > div > div{
   background: rgba(255,255,255,.78) !important;
 }
 
-/* Labels */
 div[data-testid="stSelectbox"] label,
 div[data-testid="stTextInput"] label,
 div[data-testid="stNumberInput"] label {
@@ -210,7 +166,6 @@ div[data-testid="stNumberInput"] label {
   font-weight: 780 !important;
 }
 
-/* ----- hero ----- */
 .lyrae-hero{
   padding: 56px 0 24px 0;
   text-align: center;
@@ -257,7 +212,6 @@ div[data-testid="stNumberInput"] label {
   opacity:.55;
 }
 
-/* ----- cards ----- */
 .lyrae-page-title{
   margin: 26px 0 6px 0;
   font-size: 28px;
@@ -278,7 +232,6 @@ div[data-testid="stNumberInput"] label {
   color: var(--g900);
 }
 
-/* buttons */
 .stButton > button, .stDownloadButton > button{
   border-radius: 12px !important;
   padding: 0.75rem 1.1rem !important;
@@ -289,11 +242,7 @@ div[data-testid="stNumberInput"] label {
   background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
   color: rgba(14,59,53,.98) !important;
 }
-.stButton > button:hover{
-  filter: brightness(1.02);
-}
 
-/* result pill */
 .lyrae-result{
   border-radius: 18px;
   padding: 18px 18px;
@@ -327,7 +276,7 @@ div[data-testid="stNumberInput"] label {
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ============================================================
-# Helpers (respect logique R)
+# Helpers
 # ============================================================
 def load_meta(meta_path: Path) -> dict:
     with meta_path.open("r", encoding="utf-8") as f:
@@ -366,10 +315,8 @@ def yn_to_num_if_needed(val, col_is_numeric: bool):
         return val
     if not col_is_numeric:
         return val
-
     if isinstance(val, (int, float, np.number)) and not pd.isna(val):
         return float(val)
-
     s = str(val).strip().lower()
     if s in ("oui","yes","y","true","vrai","1"):
         return 1.0
@@ -390,10 +337,8 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
     miss_cols = [c for c in X.columns if c.endswith("_missing_code")]
     if len(miss_cols) == 0:
         return X
-
     for mc in miss_cols:
         X.at[0, mc] = 0
-
     for mc in miss_cols:
         base = mc.replace("_missing_code", "")
         if base not in X.columns:
@@ -436,7 +381,9 @@ def cat_color(cat: str) -> str:
     return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
 
 # ============================================================
-# Géocodage adresse + carte (Contexte & exposition)
+# Geocode + MAP (FIX NETTETÉ)
+# - On remplace le rendu pydeck (souvent flou car canvas)
+#   par une carte Folium rendue en HTML (tiles nettes)
 # ============================================================
 @st.cache_data(show_spinner=False)
 def geocode_address(address: str):
@@ -459,24 +406,33 @@ def geocode_address(address: str):
         return None
 
 def render_map(lat: float, lon: float, zoom: int = 14):
-    import pydeck as pdk
-    dfm = pd.DataFrame([{"lat": lat, "lon": lon}])
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=dfm,
-        get_position="[lon, lat]",
-        get_radius=70,
-        radius_min_pixels=6,
-        radius_max_pixels=14,
-        get_fill_color=[14, 59, 53, 230],  # vert sapin
-        pickable=True,
-    )
-    view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=zoom, pitch=0)
-    deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "Localisation du cheval"})
-    st.pydeck_chart(deck, use_container_width=True)
+    # ✅ Rendu net: folium + streamlit-folium (tiles raster)
+    import folium
+    from streamlit_folium import st_folium
+
+    m = folium.Map(location=[lat, lon], zoom_start=zoom, control_scale=True, tiles=None)
+    # CartoDB DarkMatter est net et proche de ton rendu sombre,
+    # mais on garde une cohérence "vert/beige" ailleurs dans l'app.
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attr="&copy; OpenStreetMap contributors &copy; CARTO",
+        name="Fond sombre",
+        max_zoom=19,
+        subdomains="abcd",
+        detect_retina=True,  # ✅ crucial: charge les tiles @2x (net sur écrans HiDPI)
+    ).add_to(m)
+
+    folium.Marker(
+        location=[lat, lon],
+        tooltip="Localisation du cheval",
+        icon=folium.Icon(color="green", icon="info-sign"),
+    ).add_to(m)
+
+    # ✅ height élevé pour éviter l'interpolation / flou dû au redimensionnement
+    st_folium(m, width=None, height=420)
 
 # ============================================================
-# Topbar (logo minilyrae.png)
+# Topbar
 # ============================================================
 st.markdown(
     f"""
@@ -518,7 +474,7 @@ analysis_cols_set = set(analysis_cols)
 results_analysis_set = set([c for c in RESULTS_ANALYSIS_COLS if c in feature_cols])
 
 # ============================================================
-# Navigation (landing -> evaluation) — 1 clic + rerun
+# Navigation
 # ============================================================
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
@@ -528,7 +484,7 @@ def goto(page: str):
     st.rerun()
 
 # ============================================================
-# Libellés "questions" (Oui/Non) — sans option NA visible
+# Questions
 # ============================================================
 QUESTION = {
     "Age_du_cheval": "Quel est l’âge du cheval (années) ?",
@@ -698,18 +654,12 @@ with top_left:
 with top_right:
     st.caption("")
 
-# ============================================================
-# Tabs
-# ============================================================
 tab_identity, tab_context, tab_exclusion, tab_signs, tab_results = st.tabs([
     "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Résultats d'analyse"
 ])
 
 inputs = {}
 
-# -----------------------------
-# Identité
-# -----------------------------
 with tab_identity:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Identité du cheval</h3>", unsafe_allow_html=True)
@@ -719,7 +669,6 @@ with tab_identity:
         horse_name = st.text_input("Nom du cheval", value=st.session_state.get("horse_name", "CHEVAL_1"), placeholder="Ex: TAGADA")
     with c2:
         st.caption("")
-
     st.session_state["horse_name"] = horse_name
 
     c3, c4 = st.columns(2)
@@ -740,9 +689,6 @@ with tab_identity:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# -----------------------------
-# Contexte & exposition
-# -----------------------------
 with tab_context:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Contexte & exposition</h3>", unsafe_allow_html=True)
@@ -754,7 +700,6 @@ with tab_context:
             inputs["Classe de risque"] = input_widget("Classe de risque", key="ctx_Classe de risque")
         if has("Classe_de_risque"):
             inputs["Classe_de_risque"] = input_widget("Classe_de_risque", key="ctx_Classe_de_risque")
-
         if has("Tiques_semaines_précédentes"):
             inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
 
@@ -765,8 +710,6 @@ with tab_context:
             inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
 
     st.markdown("---")
-
-    # --- Carte interactive de localisation du cheval (adresse -> géocodage -> carte + zoom)
     st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
 
     a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
@@ -791,8 +734,7 @@ with tab_context:
         if full_address == "":
             st.session_state["geo"] = None
         else:
-            geo = geocode_address(full_address)
-            st.session_state["geo"] = geo
+            st.session_state["geo"] = geocode_address(full_address)
 
     geo = st.session_state.get("geo", None)
     if geo is not None:
@@ -802,9 +744,6 @@ with tab_context:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# -----------------------------
-# Diagnostic d'exclusion
-# -----------------------------
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
@@ -839,9 +778,6 @@ with tab_exclusion:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# -----------------------------
-# Signes cliniques (sans doublons avec "Résultats d'analyse")
-# -----------------------------
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Signes cliniques</h3>", unsafe_allow_html=True)
@@ -906,9 +842,6 @@ with tab_signs:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# -----------------------------
-# Résultats d'analyse + bouton prédiction + résultat (uniquement ici)
-# -----------------------------
 with tab_results:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Résultats d'analyse</h3>", unsafe_allow_html=True)
