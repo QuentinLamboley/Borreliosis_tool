@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 from catboost import CatBoostClassifier, Pool
 import time
+import requests
+from urllib.parse import quote_plus
 
 # ============================================================
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
@@ -425,7 +427,6 @@ def cat_from_p_like_R(p: float) -> str:
     return "Lyme sûr"
 
 def cat_color(cat: str) -> str:
-    # fond plein (avec une nuance) + cohérence gradient global vert->rouge
     if cat.startswith("Pas de Lyme"):
         return "linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%)"
     if cat == "Lyme possible":
@@ -433,6 +434,48 @@ def cat_color(cat: str) -> str:
     if cat == "Lyme probable":
         return "linear-gradient(180deg, #ef6c00 0%, #e65100 100%)"
     return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
+
+# ============================================================
+# Géocodage adresse + carte (Contexte & exposition)
+# ============================================================
+@st.cache_data(show_spinner=False)
+def geocode_address(address: str):
+    if not address or address.strip() == "":
+        return None
+    url = f"https://nominatim.openstreetmap.org/search?format=json&limit=1&q={quote_plus(address)}"
+    headers = {
+        "User-Agent": "LYRAE-Streamlit/1.0 (contact: none)"
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if not data:
+            return None
+        lat = float(data[0]["lat"])
+        lon = float(data[0]["lon"])
+        disp = data[0].get("display_name", "")
+        return {"lat": lat, "lon": lon, "display_name": disp}
+    except Exception:
+        return None
+
+def render_map(lat: float, lon: float, zoom: int = 14):
+    import pydeck as pdk
+    dfm = pd.DataFrame([{"lat": lat, "lon": lon}])
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=dfm,
+        get_position="[lon, lat]",
+        get_radius=70,
+        radius_min_pixels=6,
+        radius_max_pixels=14,
+        get_fill_color=[14, 59, 53, 230],  # vert sapin
+        pickable=True,
+    )
+    view_state = pdk.ViewState(latitude=lat, longitude=lon, zoom=zoom, pitch=0)
+    deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "Localisation du cheval"})
+    st.pydeck_chart(deck, use_container_width=True)
 
 # ============================================================
 # Topbar (logo minilyrae.png)
@@ -677,7 +720,7 @@ with tab_identity:
     with c1:
         horse_name = st.text_input("Nom du cheval", value=st.session_state.get("horse_name", "CHEVAL_1"), placeholder="Ex: TAGADA")
     with c2:
-        st.caption("")  # (supprimé : Identifiant dossier)
+        st.caption("")
 
     st.session_state["horse_name"] = horse_name
 
@@ -722,6 +765,48 @@ with tab_context:
             inputs["Exterieur_vegetalisé"] = input_widget("Exterieur_vegetalisé", key="ctx_Exterieur_vegetalisé")
         if has("Freq_acces_exterieur_sem"):
             inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
+
+    st.markdown("---")
+
+    # --- Carte interactive de localisation du cheval (adresse -> géocodage -> carte + zoom)
+    st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
+
+    a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
+    with a1:
+        num = st.text_input("Numéro", value=st.session_state.get("addr_num", ""), placeholder="N°", key="addr_num")
+    with a2:
+        street = st.text_input("Rue", value=st.session_state.get("addr_street", ""), placeholder="Rue / voie", key="addr_street")
+    with a3:
+        city = st.text_input("Ville", value=st.session_state.get("addr_city", ""), placeholder="Ville", key="addr_city")
+    with a4:
+        cp = st.text_input("Code postal", value=st.session_state.get("addr_cp", ""), placeholder="CP", key="addr_cp")
+
+    st.session_state["addr_num"] = num
+    st.session_state["addr_street"] = street
+    st.session_state["addr_city"] = city
+    st.session_state["addr_cp"] = cp
+
+    locate_col, _ = st.columns([0.34, 0.66])
+    with locate_col:
+        do_locate = st.button("Localiser sur la carte", use_container_width=True)
+
+    if "geo" not in st.session_state:
+        st.session_state["geo"] = None
+
+    if do_locate:
+        full_address = " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip()
+        if full_address == "":
+            st.session_state["geo"] = None
+        else:
+            geo = geocode_address(full_address)
+            st.session_state["geo"] = geo
+
+    geo = st.session_state.get("geo", None)
+    if geo is not None:
+        render_map(geo["lat"], geo["lon"], zoom=14)
+    else:
+        # carte par défaut (France) tant que rien n'est localisé
+        render_map(46.603354, 1.888334, zoom=5)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -814,7 +899,6 @@ with tab_signs:
     with col10:
         st.caption("")
 
-    # --- autres variables non vues ailleurs, mais on exclut celles du 5e onglet (Résultats d'analyse)
     extra_candidates = [
         c for c in feature_cols
         if c not in inputs
@@ -837,7 +921,6 @@ with tab_results:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Résultats d'analyse</h3>", unsafe_allow_html=True)
 
-    # Questions (résultats) en 2 colonnes
     cols_left, cols_right = st.columns(2)
     for i, c in enumerate([c for c in RESULTS_ANALYSIS_COLS if has(c)]):
         target = cols_left if i % 2 == 0 else cols_right
@@ -847,7 +930,6 @@ with tab_results:
     st.markdown("---")
     submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
-    # Predict (EXACT logique du bloc R "cheval unique")
     if submitted:
         with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
             time.sleep(0.25)
@@ -861,8 +943,6 @@ with tab_results:
             p_one = float(model.predict_proba(pool_one)[:, 1][0])
             cat = cat_from_p_like_R(p_one)
 
-        # Affichage: uniquement la catégorie, sur un gradient vert->rouge
-        # + marqueur positionné selon la probabilité
         marker_left = int(max(0, min(100, round(p_one * 100))))
 
         st.markdown(
