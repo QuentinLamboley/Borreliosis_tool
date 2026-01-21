@@ -10,7 +10,7 @@ import time
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
 # - lit un modèle CatBoost .cbm
 # - lit un meta .json (feature_cols, cat_cols, factor_levels)
-# - UI retravaillée (landing page + parcours)
+# - UI (landing page + parcours)
 # - champ non renseigné => NA (sans afficher "(NA)" à l'utilisateur)
 # - remplit automatiquement *_missing_code :
 #     NA sur analyse => 2 (MNAR)
@@ -51,6 +51,22 @@ analysis_cols = [
   "CVID","Hypoglobulinemie"
 ]
 
+# --- Colonnes affichées dans "Résultats d'analyse" (pour éviter les doublons ailleurs)
+RESULTS_ANALYSIS_COLS = [
+    # Sérologies / séro
+    "ELISA_pos", "ELISA_OspA_pos", "ELISA_OspF_pos", "ELISA_p39",
+    "WB_pos", "SNAP_C6_pos", "IFAT_pos",
+
+    # PCR / prélèvements
+    "PCR_sang_pos", "PCR_LCR_pos", "PCR_synoviale_pos", "PCR_liquide_articulaire_pos",
+    "PCR_peau_pos", "PCR_humeur_aqueuse_pos", "PCR_tissu_nerveux_pos",
+
+    # LCR / histo / immuno
+    "LCR_pleiocytose", "LCR_proteines_augmentees",
+    "IHC_tissulaire_pos", "Coloration_argent_pos", "FISH_tissulaire_pos",
+    "CVID", "Hypoglobulinemie",
+]
+
 # ============================================================
 # Page config + CSS (vert & beige + onglets + inputs plus visibles)
 # ============================================================
@@ -76,7 +92,6 @@ header {visibility: hidden;}
   --accent:#b08b5a;        /* beige doré */
   --accent2:#d2b48c;
   --card:#ffffffcc;
-  --shadow: 0 10px 30px rgba(0,0,0,.12);
   --shadow-soft: 0 8px 22px rgba(0,0,0,.10);
   --radius: 18px;
 }
@@ -136,7 +151,7 @@ header {visibility: hidden;}
   display:block;
 }
 
-/* ----- tabs visibility ----- */
+/* ----- tabs visibility + highlight bar (orange -> vert sapin) ----- */
 div[data-testid="stTabs"]{
   background: transparent;
 }
@@ -146,41 +161,51 @@ div[data-testid="stTabs"] button[role="tab"]{
   margin-right: 8px !important;
   background: rgba(14,59,53,.07) !important;
   border: 1px solid rgba(14,59,53,.18) !important;
-  color: rgba(14,59,53,.92) !important;
-  font-weight: 750 !important;
+  color: rgba(14,59,53,.96) !important;
+  font-weight: 780 !important;
 }
 div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
   background: rgba(14,59,53,.13) !important;
   border: 2px solid rgba(14,59,53,.35) !important;
   box-shadow: 0 8px 18px rgba(0,0,0,.08) !important;
 }
+/* tab underline/highlight */
+div[data-baseweb="tab-highlight"]{
+  background-color: var(--g900) !important;
+}
 
-/* ----- inputs readability (replace dark/black) ----- */
-div[data-testid="stSelectbox"] > div,
+/* ----- choice inputs: encadrés vert sapin + texte blanc ----- */
+div[data-testid="stSelectbox"] div[role="combobox"]{
+  background: var(--g900) !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255,255,255,.20) !important;
+}
+div[data-testid="stSelectbox"] div[role="combobox"] *{
+  color: #ffffff !important;
+}
+div[role="listbox"]{
+  background: var(--g900) !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+}
+div[role="listbox"] *{
+  color: #ffffff !important;
+}
+
+/* Keep text/number inputs readable (beige/white), but keep labels sapin */
 div[data-testid="stTextInput"] > div > div,
-div[data-testid="stNumberInput"] > div > div {
+div[data-testid="stNumberInput"] > div > div{
   border-radius: 12px !important;
   border: 1px solid rgba(14,59,53,.22) !important;
   background: rgba(255,255,255,.78) !important;
-}
-
-/* Streamlit selectbox inner control sometimes uses dark bg in some themes:
-   force a sapin-tinted background and readable text */
-div[data-testid="stSelectbox"] div[role="combobox"]{
-  background: rgba(14,59,53,.08) !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(14,59,53,.20) !important;
-}
-div[data-testid="stSelectbox"] *{
-  color: rgba(14,59,53,.95) !important;
 }
 
 /* Labels */
 div[data-testid="stSelectbox"] label,
 div[data-testid="stTextInput"] label,
 div[data-testid="stNumberInput"] label {
-  color: rgba(14,59,53,.92) !important;
-  font-weight: 700 !important;
+  color: var(--g900) !important;
+  font-weight: 780 !important;
 }
 
 /* ----- hero ----- */
@@ -193,7 +218,7 @@ div[data-testid="stNumberInput"] label {
   font-size: 42px;
   line-height: 1.12;
   font-weight: 780;
-  color: #20424b;
+  color: var(--g900);
 }
 .lyrae-hero p{
   margin: 14px auto 0 auto;
@@ -235,11 +260,7 @@ div[data-testid="stNumberInput"] label {
   margin: 26px 0 6px 0;
   font-size: 28px;
   font-weight: 780;
-  color: #20424b;
-}
-.lyrae-page-sub{
-  margin: 0 0 18px 0;
-  color: #5b6b6a;
+  color: var(--g900);
 }
 .lyrae-card{
   background: var(--card);
@@ -251,15 +272,15 @@ div[data-testid="stNumberInput"] label {
 .lyrae-card h3{
   margin: 0 0 10px 0;
   font-size: 18px;
-  font-weight: 780;
-  color:#24474f;
+  font-weight: 800;
+  color: var(--g900);
 }
 
 /* buttons */
 .stButton > button, .stDownloadButton > button{
   border-radius: 12px !important;
   padding: 0.75rem 1.1rem !important;
-  font-weight: 780 !important;
+  font-weight: 800 !important;
   border: 1px solid rgba(14,59,53,.25) !important;
 }
 .stButton > button{
@@ -270,12 +291,34 @@ div[data-testid="stNumberInput"] label {
   filter: brightness(1.02);
 }
 
-/* centered action */
-.lyrae-action{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  margin-top: 8px;
+/* result pill */
+.lyrae-result{
+  border-radius: 18px;
+  padding: 18px 18px;
+  color: white;
+  font-weight: 900;
+  font-size: 22px;
+  text-align: center;
+  box-shadow: 0 10px 22px rgba(0,0,0,.12);
+  border: 1px solid rgba(255,255,255,.28);
+}
+.lyrae-scale{
+  margin-top: 14px;
+  border-radius: 16px;
+  height: 16px;
+  background: linear-gradient(90deg, #2e7d32 0%, #f9a825 45%, #ef6c00 70%, #c62828 100%);
+  position: relative;
+  box-shadow: inset 0 2px 8px rgba(0,0,0,.12);
+}
+.lyrae-marker{
+  position: absolute;
+  top: -6px;
+  width: 10px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.95);
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+  transform: translateX(-50%);
 }
 </style>
 """
@@ -368,8 +411,6 @@ def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list
     for c in num_cols:
         if c not in X.columns:
             continue
-
-        # Oui/Non -> 1/0 (si applicable)
         X[c] = X[c].apply(lambda v: yn_to_num_if_needed(v, col_is_numeric=True))
         X[c] = pd.to_numeric(X[c], errors="coerce")
     return X
@@ -383,8 +424,18 @@ def cat_from_p_like_R(p: float) -> str:
         return "Lyme probable"
     return "Lyme sûr"
 
+def cat_color(cat: str) -> str:
+    # fond plein (avec une nuance) + cohérence gradient global vert->rouge
+    if cat.startswith("Pas de Lyme"):
+        return "linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%)"
+    if cat == "Lyme possible":
+        return "linear-gradient(180deg, #f9a825 0%, #f57f17 100%)"
+    if cat == "Lyme probable":
+        return "linear-gradient(180deg, #ef6c00 0%, #e65100 100%)"
+    return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
+
 # ============================================================
-# Topbar (logo minilyrae.png) — (suppression "Outil en veille")
+# Topbar (logo minilyrae.png)
 # ============================================================
 st.markdown(
     f"""
@@ -423,6 +474,7 @@ except Exception as e:
     st.stop()
 
 analysis_cols_set = set(analysis_cols)
+results_analysis_set = set([c for c in RESULTS_ANALYSIS_COLS if c in feature_cols])
 
 # ============================================================
 # Navigation (landing -> evaluation) — 1 clic + rerun
@@ -518,11 +570,6 @@ def question_label(col: str) -> str:
     return QUESTION.get(col, col)
 
 def input_widget(col: str, key: str):
-    """
-    - Pas d'option "(NA)" visible.
-    - Si l'utilisateur ne choisit rien => None => NA en arrière-plan.
-    - Les variables binaires sont demandées en Oui/Non (pas 0/1).
-    """
     if not has(col):
         return None
 
@@ -603,21 +650,18 @@ if st.session_state["page"] == "home":
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
 
-top_left, top_mid, top_right = st.columns([1.2, 1.0, 0.8])
+top_left, top_right = st.columns([1.2, 0.8])
 with top_left:
     if st.button("⬅ Retour accueil"):
         goto("home")
-with top_mid:
-    st.write("")  # (suppression "Modèle prêt ✅")
 with top_right:
     st.caption("")
 
 # ============================================================
-# Catégories / sous-catégories (suppression onglet "Avancé")
-# - le contenu "Avancé" est déplacé en fin de "Signes cliniques"
+# Tabs
 # ============================================================
-tab_identity, tab_context, tab_exclusion, tab_signs, tab_biology = st.tabs([
-    "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Biologie spécifique"
+tab_identity, tab_context, tab_exclusion, tab_signs, tab_results = st.tabs([
+    "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Résultats d'analyse"
 ])
 
 inputs = {}
@@ -633,7 +677,7 @@ with tab_identity:
     with c1:
         horse_name = st.text_input("Nom du cheval", value=st.session_state.get("horse_name", "CHEVAL_1"), placeholder="Ex: TAGADA")
     with c2:
-        st.text_input("Identifiant dossier (optionnel)", value="", placeholder="Ex: RESOLVE-000123")
+        st.caption("")  # (supprimé : Identifiant dossier)
 
     st.session_state["horse_name"] = horse_name
 
@@ -656,10 +700,7 @@ with tab_identity:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Contexte & exposition (mieux organisé comme le screen)
-# - 2 colonnes principales
-# - à gauche : risque + exposition directe
-# - à droite : extérieur + fréquence (stack vertical)
+# Contexte & exposition
 # -----------------------------
 with tab_context:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -668,18 +709,15 @@ with tab_context:
     left, right = st.columns([1.05, 1.0], gap="large")
 
     with left:
-        st.markdown("#### Environnement / risque")
         if has("Classe de risque"):
             inputs["Classe de risque"] = input_widget("Classe de risque", key="ctx_Classe de risque")
         if has("Classe_de_risque"):
             inputs["Classe_de_risque"] = input_widget("Classe_de_risque", key="ctx_Classe_de_risque")
 
-        st.markdown("#### Exposition directe")
         if has("Tiques_semaines_précédentes"):
             inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
 
     with right:
-        st.markdown("#### Milieu de vie / accès")
         if has("Exterieur_vegetalisé"):
             inputs["Exterieur_vegetalisé"] = input_widget("Exterieur_vegetalisé", key="ctx_Exterieur_vegetalisé")
         if has("Freq_acces_exterieur_sem"):
@@ -694,7 +732,6 @@ with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
 
-    st.markdown("#### Examen clinique")
     col1, col2 = st.columns(2)
     with col1:
         if has("Examen_clinique"):
@@ -702,7 +739,6 @@ with tab_exclusion:
     with col2:
         st.caption("")
 
-    st.markdown("#### Co-infections / diagnostics différentiels")
     col3, col4 = st.columns(2)
     with col3:
         if has("piroplasmose_neg"):
@@ -714,7 +750,6 @@ with tab_exclusion:
     with col4:
         st.caption("")
 
-    st.markdown("#### Bilan sanguin / inflammation / organes")
     col5, col6 = st.columns(2)
     with col5:
         for c in ["Bilan_sanguin_normal","NFS_normale","SAA_normal","Fibrinogène_normal"]:
@@ -728,13 +763,12 @@ with tab_exclusion:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Signes cliniques + (ex-Avancé)
+# Signes cliniques (sans doublons avec "Résultats d'analyse")
 # -----------------------------
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Signes cliniques</h3>", unsafe_allow_html=True)
 
-    st.markdown("#### Signes généraux")
     col1, col2 = st.columns(2)
     with col1:
         for c in ["Abattement","Mauvaise_performance"]:
@@ -745,7 +779,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"sg_{c}")
 
-    st.markdown("#### Neurologique")
     col3, col4 = st.columns(2)
     with col3:
         for c in ["Meningite","Radiculonevrite","Troubles_de_la_demarche"]:
@@ -756,7 +789,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"sn_{c}")
 
-    st.markdown("#### Oculaire")
     col5, col6 = st.columns(2)
     with col5:
         for c in ["Uveite_bilaterale","Cecite_avec_cause_inflammatoire","Synechies"]:
@@ -767,7 +799,6 @@ with tab_signs:
             if has(c):
                 inputs[c] = input_widget(c, key=f"so_{c}")
 
-    st.markdown("#### Articulaire")
     col7, col8 = st.columns(2)
     with col7:
         if has("Synovite_avec_epanchement_articulaire"):
@@ -775,7 +806,6 @@ with tab_signs:
     with col8:
         st.caption("")
 
-    st.markdown("#### Cutané / autres")
     col9, col10 = st.columns(2)
     with col9:
         for c in ["Pseudolyphome_cutane","Pododermatite"]:
@@ -784,14 +814,14 @@ with tab_signs:
     with col10:
         st.caption("")
 
-    # --- ex-Avancé : variables supplémentaires intégrées ici, en "questions" comme le reste
+    # --- autres variables non vues ailleurs, mais on exclut celles du 5e onglet (Résultats d'analyse)
     extra_candidates = [
         c for c in feature_cols
         if c not in inputs
         and not c.endswith("_missing_code")
+        and c not in results_analysis_set
     ]
     if len(extra_candidates) > 0:
-        st.markdown("#### Autres informations (si disponibles)")
         colA, colB = st.columns(2)
         for i, c in enumerate(extra_candidates):
             target = colA if i % 2 == 0 else colB
@@ -801,94 +831,50 @@ with tab_signs:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------
-# Biologie spécifique
+# Résultats d'analyse + bouton prédiction + résultat (uniquement ici)
 # -----------------------------
-with tab_biology:
+with tab_results:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Biologie spécifique (Bbsl)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>Résultats d'analyse</h3>", unsafe_allow_html=True)
 
-    st.markdown("#### Sérologies")
-    col1, col2 = st.columns(2)
-    with col1:
-        for c in ["ELISA_pos","ELISA_OspA_pos","ELISA_OspF_pos","ELISA_p39"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
-    with col2:
-        for c in ["WB_pos","SNAP_C6_pos","IFAT_pos"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
+    # Questions (résultats) en 2 colonnes
+    cols_left, cols_right = st.columns(2)
+    for i, c in enumerate([c for c in RESULTS_ANALYSIS_COLS if has(c)]):
+        target = cols_left if i % 2 == 0 else cols_right
+        with target:
+            inputs[c] = input_widget(c, key=f"res_{c}")
 
-    st.markdown("#### PCR")
-    col3, col4 = st.columns(2)
-    with col3:
-        for c in ["PCR_sang_pos","PCR_LCR_pos","PCR_synoviale_pos","PCR_liquide_articulaire_pos"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
-    with col4:
-        for c in ["PCR_peau_pos","PCR_humeur_aqueuse_pos","PCR_tissu_nerveux_pos"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
+    st.markdown("---")
+    submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
-    st.markdown("#### LCR / Histologie / Immuno")
-    col5, col6 = st.columns(2)
-    with col5:
-        for c in ["LCR_pleiocytose","LCR_proteines_augmentees","IHC_tissulaire_pos"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
-    with col6:
-        for c in ["Coloration_argent_pos","FISH_tissulaire_pos","CVID","Hypoglobulinemie"]:
-            if has(c):
-                inputs[c] = input_widget(c, key=f"bio_{c}")
+    # Predict (EXACT logique du bloc R "cheval unique")
+    if submitted:
+        with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
+            time.sleep(0.25)
+
+            X = build_template(feature_cols)
+            X = apply_inputs_to_template(X, inputs)
+            X = fill_missing_code_like_R(X, set(analysis_cols))
+            X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
+
+            pool_one = Pool(X, cat_features=cat_idx)
+            p_one = float(model.predict_proba(pool_one)[:, 1][0])
+            cat = cat_from_p_like_R(p_one)
+
+        # Affichage: uniquement la catégorie, sur un gradient vert->rouge
+        # + marqueur positionné selon la probabilité
+        marker_left = int(max(0, min(100, round(p_one * 100))))
+
+        st.markdown(
+            f"""
+            <div class="lyrae-result" style="background:{cat_color(cat)};">
+              {cat}
+              <div class="lyrae-scale">
+                <div class="lyrae-marker" style="left:{marker_left}%;"></div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ============================================================
-# ACTIONS (bas) + "cheval qui galope" pendant le chargement
-# ============================================================
-st.markdown("---")
-submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
-
-# ============================================================
-# Predict (EXACT logique du bloc R "cheval unique")
-# ============================================================
-if submitted:
-    with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
-        # petite pause pour rendre l’animation perceptible même si prédiction rapide
-        time.sleep(0.25)
-
-        X = build_template(feature_cols)
-        X = apply_inputs_to_template(X, inputs)
-        X = fill_missing_code_like_R(X, analysis_cols_set)
-        X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
-
-        pool_one = Pool(X, cat_features=cat_idx)
-        p_one = float(model.predict_proba(pool_one)[:, 1][0])
-        cat = cat_from_p_like_R(p_one)
-
-    st.markdown("## 📌 Résultat")
-    a, b, c = st.columns(3)
-    a.metric("Nom du cheval", st.session_state.get("horse_name", "CHEVAL_1"))
-    b.metric("P_Lyme", f"{p_one:.3f}")
-    c.metric("Catégorie", cat)
-
-    st.write("### Aperçu des variables réellement prises en compte (non-NA)")
-    non_na_cols = X.columns[X.notna().iloc[0]].tolist()
-    if len(non_na_cols) == 0:
-        st.info("Aucune information n’a été renseignée.")
-    else:
-        st.dataframe(X[non_na_cols], use_container_width=True)
-
-    out = X.copy()
-    out.insert(0, "Nom_du_Cheval", st.session_state.get("horse_name", "CHEVAL_1"))
-    out["P_Lyme"] = p_one
-    out["Cat"] = cat
-    csv_bytes = out.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "⬇️ Télécharger la ligne (CSV)",
-        data=csv_bytes,
-        file_name=f"{st.session_state.get('horse_name','CHEVAL_1')}_prediction.csv",
-        mime="text/csv"
-    )
-
-    st.caption("Cet outil est une aide à la décision, non un dispositif médical autonome.")
