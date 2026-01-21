@@ -7,6 +7,7 @@ from catboost import CatBoostClassifier, Pool
 import time
 import requests
 from urllib.parse import quote_plus
+import streamlit.components.v1 as components  # ✅ (AJOUT) carte nette via Leaflet sans dépendance Python
 
 # ============================================================
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
@@ -348,14 +349,12 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
     return X
 
 def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list, factor_levels: dict):
-    # cat
     for c in cat_cols:
         if c in X.columns:
             lv = factor_levels.get(c, None)
             X[c] = X[c].astype("string")
             X[c] = pd.Categorical(X[c], categories=lv) if lv is not None else pd.Categorical(X[c])
 
-    # num
     num_cols = [c for c in feature_cols if c not in cat_cols]
     for c in num_cols:
         if c not in X.columns:
@@ -383,10 +382,7 @@ def cat_color(cat: str) -> str:
     return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
 
 # ============================================================
-# Geocode + MAP (sans folium) — FIX ModuleNotFoundError
-# - On utilise st.map (aucune dépendance externe).
-# - Rendu plus net : width_container + hauteur + zoom via view_state
-#   => on passe par pydeck intégré à Streamlit.
+# Geocode + MAP (Leaflet dans components.html) — ✅ carte nette
 # ============================================================
 @st.cache_data(show_spinner=False)
 def geocode_address(address: str):
@@ -409,10 +405,62 @@ def geocode_address(address: str):
         return None
 
 def render_map(lat: float, lon: float, zoom: int = 14):
-    # ✅ aucune dépendance externe
-    # ✅ rendu plus net : height + use_container_width + zoom
-    df_map = pd.DataFrame([{"lat": lat, "lon": lon}])
-    st.map(df_map, zoom=zoom, use_container_width=True, height=420)
+    # ✅ Leaflet + tiles retina => rendu net
+    # ✅ aucune dépendance Python (folium inutile)
+    map_id = f"map_{abs(hash((round(lat,6), round(lon,6), int(zoom))))}"
+    html = f"""
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""
+        />
+        <script
+          src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""
+        ></script>
+        <style>
+          html, body {{ margin:0; padding:0; background:transparent; }}
+          #{map_id} {{
+            width: 100%;
+            height: 420px;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 10px 22px rgba(0,0,0,.12);
+            border: 1px solid rgba(14,59,53,.12);
+          }}
+        </style>
+      </head>
+      <body>
+        <div id="{map_id}"></div>
+        <script>
+          const map = L.map("{map_id}", {{
+            zoomControl: true,
+            attributionControl: true,
+          }}).setView([{lat}, {lon}], {int(zoom)});
+
+          // Tiles OSM (net) + détecte retina
+          L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
+            maxZoom: 19,
+            detectRetina: true,
+            updateWhenIdle: true,
+            keepBuffer: 4,
+            attribution: '&copy; OpenStreetMap contributors'
+          }}).addTo(map);
+
+          // marker
+          const marker = L.marker([{lat}, {lon}]).addTo(map);
+        </script>
+      </body>
+    </html>
+    """
+    components.html(html, height=440)
 
 # ============================================================
 # Topbar
@@ -845,8 +893,6 @@ with tab_results:
             X = build_template(feature_cols)
             X = apply_inputs_to_template(X, inputs)
 
-            # Convertir "Oui/Non" saisis en 1/0 dans les colonnes numériques
-            # (la logique yes/no->num est déjà dans coerce_like_train_python)
             X = fill_missing_code_like_R(X, set(analysis_cols))
             X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
