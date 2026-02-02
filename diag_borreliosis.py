@@ -1375,7 +1375,7 @@ elif active_tab == "Contexte & exposition":
           <div>
             <h3 style="margin:0;"> Contexte & exposition</h3>
             <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
-              Exposition aux tiques, environnement, localisation.
+              Renseigne ce que tu sais — le reste peut rester vide.
             </div>
           </div>
           <div class="lyrae-mini-pill">Étape {step} / 5</div>
@@ -1743,6 +1743,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
