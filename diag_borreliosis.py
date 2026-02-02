@@ -1,4 +1,7 @@
 import json
+import io
+import re
+import unicodedata
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -7,7 +10,7 @@ from catboost import CatBoostClassifier, Pool
 import time
 import requests
 from urllib.parse import quote_plus
-import streamlit.components.v1 as components  # ✅ (AJOUT) carte nette via Leaflet sans dépendance Python
+import streamlit.components.v1 as components  # ✅ carte nette via Leaflet sans dépendance Python
 
 # ============================================================
 # LYRAE / RESOLVE — Streamlit predictor (CatBoost)
@@ -19,9 +22,14 @@ APP_SUBTITLE = "Analyse structurée basée sur les données cliniques, biologiqu
 MODEL_DEFAULT = "equine_lyme_catboost.cbm"
 META_DEFAULT  = "equine_lyme_catboost_meta.json"
 
+REF_XLSX_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/jeu_fictif_lyme_equine_cas_parfaits.xlsx"
+REF_XLSX_SHEET = 0  # ou "Sheet1"
+REF_XLSX_IGNORE = {"target", "y", "label"}  # colonnes non-features éventuelles
+
 HERO_IMAGE_URL  = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
 MINI_LOGO_URL   = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/minilyrae.png"
 
+# Fallback si meta.json n'a pas encore analysis_cols
 analysis_cols = [
   "piroplasmose_neg","ehrlichiose_neg","Bilan_sanguin_normal","NFS_normale",
   "Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux",
@@ -42,6 +50,13 @@ RESULTS_ANALYSIS_COLS = [
     "IHC_tissulaire_pos", "Coloration_argent_pos", "FISH_tissulaire_pos",
     "CVID", "Hypoglobulinemie",
 ]
+
+# Fallback numeric/integer si meta.json ne les fournit pas
+NUMERIC_COLS_DEFAULT = {"Age_du_cheval", "Freq_acces_exterieur_sem"}
+INTEGER_COLS_DEFAULT = {"Age_du_cheval", "Freq_acces_exterieur_sem"}
+
+# ⚠️ Mets un vrai contact (mail ou URL projet) pour Nominatim / téléchargements
+APP_CONTACT = "quentin@TODO"
 
 st.set_page_config(page_title=f"{APP_BRAND} — {APP_TITLE}", layout="wide")
 
@@ -285,6 +300,14 @@ def load_meta(meta_path: Path) -> dict:
     for k in ("feature_cols", "cat_cols", "factor_levels"):
         if k not in meta:
             raise ValueError(f"meta.json invalide: clé manquante '{k}'")
+    # analysis_cols est optionnel mais recommandé
+    if "analysis_cols" not in meta:
+        meta["analysis_cols"] = None
+    # numeric/integer cols optionnels
+    if "numeric_cols" not in meta:
+        meta["numeric_cols"] = None
+    if "integer_cols" not in meta:
+        meta["integer_cols"] = None
     return meta
 
 @st.cache_resource
@@ -308,6 +331,38 @@ def load_model_and_meta(model_path_str: str, meta_path_str: str):
 
     cat_idx = [feature_cols.index(c) for c in cat_cols if c in feature_cols]
     return model, meta, feature_cols, cat_cols, factor_levels, cat_idx
+
+@st.cache_data(show_spinner=False)
+def load_xlsx_columns(url: str, sheet=0) -> list[str]:
+    """
+    Télécharge le XLSX de référence et retourne la liste des colonnes (1ère ligne).
+    """
+    try:
+        headers = {"User-Agent": f"LYRAE-Streamlit/1.0 (contact: {APP_CONTACT})"}
+        r = requests.get(url, headers=headers, timeout=20)
+        r.raise_for_status()
+        bio = io.BytesIO(r.content)
+        df = pd.read_excel(bio, sheet_name=sheet, engine="openpyxl")
+        cols = [str(c).strip() for c in df.columns]
+        return cols
+    except Exception as e:
+        return [f"__ERROR__:{type(e).__name__}:{e}"]
+
+def normalize_colname(s: str) -> str:
+    s = "" if s is None else str(s)
+    s = s.strip()
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = s.lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^a-z0-9_]", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s
+
+def build_canon_map(feature_cols: list[str]) -> dict[str, str]:
+    out = {}
+    for fc in feature_cols:
+        out[normalize_colname(fc)] = fc
+    return out
 
 def yn_to_num_if_needed(val, col_is_numeric: bool):
     if val is None:
@@ -387,26 +442,36 @@ def cat_color(cat: str) -> str:
 @st.cache_data(show_spinner=False)
 def geocode_address(address: str):
     if not address or address.strip() == "":
-        return None
+        return {"ok": False, "error": "Adresse vide."}
+
+    # throttling simple (cache_data limite déjà beaucoup)
+    time.sleep(1.0)
+
     url = f"https://nominatim.openstreetmap.org/search?format=json&limit=1&q={quote_plus(address)}"
-    headers = {"User-Agent": "LYRAE-Streamlit/1.0 (contact: none)"}
+    headers = {
+        "User-Agent": f"LYRAE-Streamlit/1.0 (contact: {APP_CONTACT})",
+        "Accept-Language": "fr",
+    }
+
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code != 200:
-            return None
+        r = requests.get(url, headers=headers, timeout=15)
+
+        if r.status_code in (429, 503):
+            return {"ok": False, "error": f"Nominatim indisponible (HTTP {r.status_code}). Réessaye plus tard."}
+
+        r.raise_for_status()
         data = r.json()
         if not data:
-            return None
+            return {"ok": False, "error": "Adresse non trouvée."}
+
         lat = float(data[0]["lat"])
         lon = float(data[0]["lon"])
         disp = data[0].get("display_name", "")
-        return {"lat": lat, "lon": lon, "display_name": disp}
-    except Exception:
-        return None
+        return {"ok": True, "lat": lat, "lon": lon, "display_name": disp}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 def render_map(lat: float, lon: float, zoom: int = 14):
-    # ✅ Leaflet + tiles retina => rendu net
-    # ✅ aucune dépendance Python (folium inutile)
     map_id = f"map_{abs(hash((round(lat,6), round(lon,6), int(zoom))))}"
     html = f"""
     <!doctype html>
@@ -445,7 +510,6 @@ def render_map(lat: float, lon: float, zoom: int = 14):
             attributionControl: true,
           }}).setView([{lat}, {lon}], {int(zoom)});
 
-          // Tiles OSM (net) + détecte retina
           L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
             maxZoom: 19,
             detectRetina: true,
@@ -454,7 +518,6 @@ def render_map(lat: float, lon: float, zoom: int = 14):
             attribution: '&copy; OpenStreetMap contributors'
           }}).addTo(map);
 
-          // marker
           const marker = L.marker([{lat}, {lon}]).addTo(map);
         </script>
       </body>
@@ -501,8 +564,55 @@ except Exception as e:
     st.error(f"Impossible de charger modèle/meta: {e}")
     st.stop()
 
-analysis_cols_set = set(analysis_cols)
+# Canon map (accents/espaces)
+canon_map = build_canon_map(feature_cols)
+
+def canon(col_ui: str) -> str:
+    return canon_map.get(normalize_colname(col_ui), col_ui)
+
+# analysis_cols depuis meta.json si présent
+analysis_cols_from_meta = meta.get("analysis_cols", None)
+if analysis_cols_from_meta is None:
+    with st.sidebar:
+        st.warning("meta.json ne contient pas 'analysis_cols' (fallback sur liste dans le code).")
+    analysis_cols_set = set(analysis_cols)
+else:
+    analysis_cols_set = set([c for c in analysis_cols_from_meta if c in feature_cols])
+
 results_analysis_set = set([c for c in RESULTS_ANALYSIS_COLS if c in feature_cols])
+
+# numeric/integer cols depuis meta.json si présent
+numeric_cols = set(meta.get("numeric_cols") or []) or set(NUMERIC_COLS_DEFAULT)
+integer_cols = set(meta.get("integer_cols") or []) or set(INTEGER_COLS_DEFAULT)
+
+# ============================================================
+# Vérification colonnes vs XLSX de référence
+# ============================================================
+xlsx_cols = load_xlsx_columns(REF_XLSX_URL, sheet=REF_XLSX_SHEET)
+
+with st.sidebar:
+    st.subheader("✅ Contrôle des colonnes")
+    if xlsx_cols and isinstance(xlsx_cols[0], str) and xlsx_cols[0].startswith("__ERROR__:"):
+        st.warning("Impossible de lire le XLSX de référence.")
+        st.caption(xlsx_cols[0])
+    else:
+        ref_set = {c for c in xlsx_cols if c and c not in REF_XLSX_IGNORE}
+        feat_set = set(feature_cols)
+
+        missing_in_model = sorted(ref_set - feat_set)
+        extra_in_model   = sorted(feat_set - ref_set)
+
+        if not missing_in_model and not extra_in_model:
+            st.success("OK : colonnes modèle = colonnes XLSX.")
+        else:
+            st.error("⚠️ Mismatch colonnes modèle vs XLSX.")
+            with st.expander("Détails"):
+                if missing_in_model:
+                    st.write("**Dans XLSX mais pas dans feature_cols :**")
+                    st.code("\n".join(missing_in_model))
+                if extra_in_model:
+                    st.write("**Dans feature_cols mais pas dans XLSX :**")
+                    st.code("\n".join(extra_in_model))
 
 # ============================================================
 # Navigation
@@ -592,22 +702,38 @@ QUESTION = {
 YES_NO_OPTS = ["Oui", "Non"]
 
 def has(col):
-    return col in feature_cols
+    return canon(col) in feature_cols
 
 def question_label(col: str) -> str:
     return QUESTION.get(col, col)
 
 def input_widget(col: str, key: str):
-    if not has(col):
+    c = canon(col)
+    if c not in feature_cols:
         return None
 
     label = question_label(col)
 
-    if col in cat_cols:
-        lv = factor_levels.get(col, [])
+    # Numériques: number_input + checkbox Inconnu
+    if c in numeric_cols:
+        left, right = st.columns([0.82, 0.18], gap="small")
+        with right:
+            unk = st.checkbox("Inconnu", key=f"{key}__unk")
+        with left:
+            if c in integer_cols:
+                val = st.number_input(label, min_value=0, step=1, value=0, disabled=unk, key=f"{key}__num")
+                return pd.NA if unk else int(val)
+            else:
+                val = st.number_input(label, min_value=0.0, step=0.1, value=0.0, disabled=unk, key=f"{key}__num")
+                return pd.NA if unk else float(val)
+
+    # Catégorielles
+    if c in cat_cols:
+        lv = factor_levels.get(c, [])
         choice = st.selectbox(label, options=[str(x) for x in lv], index=None, placeholder="Sélectionner…", key=key)
         return pd.NA if choice is None else choice
 
+    # Binaires (Oui/Non)
     bin_like = (
         col.endswith(("_neg", "_normal", "_normale")) or
         col.startswith(("ELISA", "WB", "PCR", "SNAP", "IFAT")) or
@@ -627,6 +753,12 @@ def input_widget(col: str, key: str):
 
     raw = st.text_input(label, value="", placeholder="Laisser vide si inconnu", key=key)
     return pd.NA if raw.strip() == "" else raw.strip()
+
+def put_input(col_ui: str, key: str, inputs: dict):
+    v = input_widget(col_ui, key=key)
+    if v is None:
+        return
+    inputs[canon(col_ui)] = v
 
 # ============================================================
 # HOME
@@ -705,18 +837,18 @@ with tab_identity:
     c3, c4 = st.columns(2)
     with c3:
         if has("Age_du_cheval"):
-            inputs["Age_du_cheval"] = input_widget("Age_du_cheval", key="id_Age_du_cheval")
+            put_input("Age_du_cheval", "id_Age_du_cheval", inputs)
     with c4:
         if has("Type_de_cheval"):
-            inputs["Type_de_cheval"] = input_widget("Type_de_cheval", key="id_Type_de_cheval")
+            put_input("Type_de_cheval", "id_Type_de_cheval", inputs)
 
     c5, c6 = st.columns(2)
     with c5:
         if has("Season"):
-            inputs["Season"] = input_widget("Season", key="id_Season")
+            put_input("Season", "id_Season", inputs)
     with c6:
         if has("Sexe"):
-            inputs["Sexe"] = input_widget("Sexe", key="id_Sexe")
+            put_input("Sexe", "id_Sexe", inputs)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -728,17 +860,17 @@ with tab_context:
 
     with left:
         if has("Classe de risque"):
-            inputs["Classe de risque"] = input_widget("Classe de risque", key="ctx_Classe de risque")
+            put_input("Classe de risque", "ctx_Classe de risque", inputs)
         if has("Classe_de_risque"):
-            inputs["Classe_de_risque"] = input_widget("Classe_de_risque", key="ctx_Classe_de_risque")
+            put_input("Classe_de_risque", "ctx_Classe_de_risque", inputs)
         if has("Tiques_semaines_précédentes"):
-            inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
+            put_input("Tiques_semaines_précédentes", "ctx_Tiques_semaines_précédentes", inputs)
 
     with right:
         if has("Exterieur_vegetalisé"):
-            inputs["Exterieur_vegetalisé"] = input_widget("Exterieur_vegetalisé", key="ctx_Exterieur_vegetalisé")
+            put_input("Exterieur_vegetalisé", "ctx_Exterieur_vegetalisé", inputs)
         if has("Freq_acces_exterieur_sem"):
-            inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
+            put_input("Freq_acces_exterieur_sem", "ctx_Freq_acces_exterieur_sem", inputs)
 
     st.markdown("---")
     st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
@@ -763,14 +895,16 @@ with tab_context:
     if do_locate:
         full_address = " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip()
         if full_address == "":
-            st.session_state["geo"] = None
+            st.session_state["geo"] = {"ok": False, "error": "Adresse vide."}
         else:
             st.session_state["geo"] = geocode_address(full_address)
 
     geo = st.session_state.get("geo", None)
-    if geo is not None:
+    if geo and isinstance(geo, dict) and geo.get("ok"):
         render_map(geo["lat"], geo["lon"], zoom=14)
     else:
+        if geo and isinstance(geo, dict) and not geo.get("ok"):
+            st.warning(geo.get("error", "Erreur géocodage."))
         render_map(46.603354, 1.888334, zoom=5)
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -782,18 +916,18 @@ with tab_exclusion:
     col1, col2 = st.columns(2)
     with col1:
         if has("Examen_clinique"):
-            inputs["Examen_clinique"] = input_widget("Examen_clinique", key="excl_Examen_clinique")
+            put_input("Examen_clinique", "excl_Examen_clinique", inputs)
     with col2:
         st.caption("")
 
     col3, col4 = st.columns(2)
     with col3:
         if has("piroplasmose_neg"):
-            inputs["piroplasmose_neg"] = input_widget("piroplasmose_neg", key="excl_piroplasmose_neg")
+            put_input("piroplasmose_neg", "excl_piroplasmose_neg", inputs)
         if has("ehrlichiose_neg"):
-            inputs["ehrlichiose_neg"] = input_widget("ehrlichiose_neg", key="excl_ehrlichiose_neg")
+            put_input("ehrlichiose_neg", "excl_ehrlichiose_neg", inputs)
         if has("ehrlichiose_negatif"):
-            inputs["ehrlichiose_negatif"] = input_widget("ehrlichiose_negatif", key="excl_ehrlichiose_negatif")
+            put_input("ehrlichiose_negatif", "excl_ehrlichiose_negatif", inputs)
     with col4:
         st.caption("")
 
@@ -801,11 +935,11 @@ with tab_exclusion:
     with col5:
         for c in ["Bilan_sanguin_normal","NFS_normale","SAA_normal","Fibrinogène_normal"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"excl_{c}")
+                put_input(c, f"excl_{c}", inputs)
     with col6:
         for c in ["Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"excl_{c}")
+                put_input(c, f"excl_{c}", inputs)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -817,36 +951,36 @@ with tab_signs:
     with col1:
         for c in ["Abattement","Mauvaise_performance"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sg_{c}")
+                put_input(c, f"sg_{c}", inputs)
     with col2:
         for c in ["Douleurs_diffuses","Boiterie"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sg_{c}")
+                put_input(c, f"sg_{c}", inputs)
 
     col3, col4 = st.columns(2)
     with col3:
         for c in ["Meningite","Radiculonevrite","Troubles_de_la_demarche"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sn_{c}")
+                put_input(c, f"sn_{c}", inputs)
     with col4:
         for c in ["Dysphagie","Fasciculations_musculaires"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sn_{c}")
+                put_input(c, f"sn_{c}", inputs)
 
     col5, col6 = st.columns(2)
     with col5:
         for c in ["Uveite_bilaterale","Cecite_avec_cause_inflammatoire","Synechies"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"so_{c}")
+                put_input(c, f"so_{c}", inputs)
     with col6:
         for c in ["Atrophie","Dyscories","Myosis"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"so_{c}")
+                put_input(c, f"so_{c}", inputs)
 
     col7, col8 = st.columns(2)
     with col7:
         if has("Synovite_avec_epanchement_articulaire"):
-            inputs["Synovite_avec_epanchement_articulaire"] = input_widget("Synovite_avec_epanchement_articulaire", key="sa_Synovite_avec_epanchement_articulaire")
+            put_input("Synovite_avec_epanchement_articulaire", "sa_Synovite_avec_epanchement_articulaire", inputs)
     with col8:
         st.caption("")
 
@@ -854,7 +988,7 @@ with tab_signs:
     with col9:
         for c in ["Pseudolyphome_cutane","Pododermatite"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sc_{c}")
+                put_input(c, f"sc_{c}", inputs)
     with col10:
         st.caption("")
 
@@ -869,7 +1003,10 @@ with tab_signs:
         for i, c in enumerate(extra_candidates):
             target = colA if i % 2 == 0 else colB
             with target:
-                inputs[c] = input_widget(c, key=f"extra_{c}")
+                # Ici c est déjà canonique
+                v = input_widget(c, key=f"extra_{c}")
+                if v is not None:
+                    inputs[c] = v
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -881,7 +1018,7 @@ with tab_results:
     for i, c in enumerate([c for c in RESULTS_ANALYSIS_COLS if has(c)]):
         target = cols_left if i % 2 == 0 else cols_right
         with target:
-            inputs[c] = input_widget(c, key=f"res_{c}")
+            put_input(c, key=f"res_{c}", inputs=inputs)
 
     st.markdown("---")
     submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
@@ -893,12 +1030,17 @@ with tab_results:
             X = build_template(feature_cols)
             X = apply_inputs_to_template(X, inputs)
 
-            X = fill_missing_code_like_R(X, set(analysis_cols))
+            X = fill_missing_code_like_R(X, analysis_cols_set)
             X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
             pool_one = Pool(X, cat_features=cat_idx)
             p_one = float(model.predict_proba(pool_one)[:, 1][0])
             cat = cat_from_p_like_R(p_one)
+
+            base_cols = [c for c in feature_cols if not c.endswith("_missing_code")]
+            filled_cols = [c for c in base_cols if not pd.isna(X.at[0, c])]
+            missing_cols = [c for c in base_cols if pd.isna(X.at[0, c])]
+            missing_major = sorted(set(missing_cols) & (results_analysis_set | analysis_cols_set))
 
         marker_left = int(max(0, min(100, round(p_one * 100))))
 
@@ -913,5 +1055,20 @@ with tab_results:
             """,
             unsafe_allow_html=True
         )
+
+        st.markdown("---")
+        cA, cB, cC = st.columns(3)
+        cA.metric("Probabilité Lyme", f"{p_one:.1%}")
+        cB.metric("Variables renseignées", f"{len(filled_cols)}/{len(base_cols)}")
+        cC.metric("Variables manquantes", f"{len(missing_cols)}")
+
+        with st.expander("Détails des données utilisées"):
+            st.write("**Renseignées :**")
+            st.code(", ".join(filled_cols) if filled_cols else "—")
+            st.write("**Manquantes :**")
+            st.code(", ".join(missing_cols) if missing_cols else "—")
+            if missing_major:
+                st.warning("Variables majeures manquantes (analyses / exclusion / tests) :")
+                st.code(", ".join(missing_major))
 
     st.markdown("</div>", unsafe_allow_html=True)
