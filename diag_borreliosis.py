@@ -1373,7 +1373,7 @@ elif active_tab == "Contexte & exposition":
         f"""
         <div class="lyrae-card-header">
           <div>
-            <h3 style="margin:0;">🌿 Contexte & exposition</h3>
+            <h3 style="margin:0;"> Contexte & exposition</h3>
             <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
               Exposition aux tiques, environnement, localisation.
             </div>
@@ -1743,6 +1743,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
