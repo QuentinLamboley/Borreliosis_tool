@@ -1325,16 +1325,13 @@ if active_tab == "Identité":
     left, right = st.columns([1.25, 0.75], gap="large")
 
     with left:
-        c1, c2 = st.columns(2)
-        with c1:
-            horse_name = st.text_input(
-                "Nom du cheval",
-                value=st.session_state.get("horse_name", "CHEVAL_1"),
-                placeholder="Ex: TAGADA",
-                key="horse_name"
-            )
-        with c2:
-            st.caption("")
+        horse_name = st.text_input(
+    "Nom du cheval",
+    value=st.session_state.get("horse_name", "CHEVAL_1"),
+    placeholder="Ex: TAGADA",
+    key="horse_name"
+)
+
 
         # Âge puis Type EN COLONNE (stacked)
         if has("Age_du_cheval"):
@@ -1736,6 +1733,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
