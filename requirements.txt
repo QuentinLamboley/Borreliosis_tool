@@ -3,4 +3,5 @@ pandas>=2.0
 numpy>=1.24
 catboost>=1.2
 rasterio
-Transformer
+pyproj
+
