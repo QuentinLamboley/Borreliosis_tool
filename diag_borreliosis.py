@@ -684,28 +684,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# NAV boutons simples (fiables)
-nav_cols = st.columns([1,1,1,1,1])
-with nav_cols[0]:
-    if st.button("🏠 Accueil", use_container_width=True):
-        st.session_state["page"] = "home"
-        st.rerun()
-with nav_cols[1]:
-    if st.button("🩺 Évaluation", use_container_width=True):
-        st.session_state["page"] = "eval"
-        st.rerun()
-with nav_cols[2]:
-    if st.button("📐 Méthodologie", use_container_width=True):
-        st.session_state["page"] = "methodo"
-        st.rerun()
-with nav_cols[3]:
-    if st.button("📚 Sources", use_container_width=True):
-        st.session_state["page"] = "sources"
-        st.rerun()
-with nav_cols[4]:
-    if st.button("🧩 RESOLVE", use_container_width=True):
-        st.session_state["page"] = "project"
-        st.rerun()
 
 page = st.session_state.get("page", "home")
 
@@ -1374,6 +1352,7 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
