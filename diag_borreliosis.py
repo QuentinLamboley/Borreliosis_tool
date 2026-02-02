@@ -1310,7 +1310,7 @@ if active_tab == "Identité":
         f"""
         <div class="lyrae-card-header">
           <div>
-            <h3 style="margin:0;">🐴 Identité du cheval</h3>
+            <h3 style="margin:0;"> Identité du cheval</h3>
             <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
               Renseigne ce que tu sais — le reste peut rester vide.
             </div>
@@ -1733,6 +1733,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
