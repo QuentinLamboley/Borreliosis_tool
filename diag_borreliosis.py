@@ -1273,7 +1273,6 @@ def put(col: str, value):
 if active_tab == "Identité":
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
 
-    # ✅ Header premium + badge étape
     st.markdown(
         f"""
         <div class="lyrae-card-header">
@@ -1289,34 +1288,51 @@ if active_tab == "Identité":
         unsafe_allow_html=True
     )
 
-    c1, c2 = st.columns(2)
-    with c1:
-        horse_name = st.text_input(
-            "Nom du cheval",
-            value=st.session_state.get("horse_name", "CHEVAL_1"),
-            placeholder="Ex: TAGADA",
-            key="horse_name"
+    # ✅ Nouveau layout : formulaire à gauche, photo à droite
+    left, right = st.columns([1.25, 0.75], gap="large")
+
+    with left:
+        c1, c2 = st.columns(2)
+        with c1:
+            horse_name = st.text_input(
+                "Nom du cheval",
+                value=st.session_state.get("horse_name", "CHEVAL_1"),
+                placeholder="Ex: TAGADA",
+                key="horse_name"
+            )
+        with c2:
+            st.caption("")
+
+        c3, c4 = st.columns(2)
+        with c3:
+            if has("Age_du_cheval"):
+                put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
+        with c4:
+            if has("Type_de_cheval"):
+                put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
+
+        c5, c6 = st.columns(2)
+        with c5:
+            if has("Season"):
+                put("Season", input_widget("Season", key="id_Season"))
+        with c6:
+            if has("Sexe"):
+                put("Sexe", input_widget("Sexe", key="id_Sexe"))
+
+    with right:
+        # Option A (simple)
+        st.image(
+            "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/equiphoto.png",
+            use_container_width=True
         )
-    with c2:
-        st.caption("")
 
-    c3, c4 = st.columns(2)
-    with c3:
-        if has("Age_du_cheval"):
-            put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
-    with c4:
-        if has("Type_de_cheval"):
-            put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
-
-    c5, c6 = st.columns(2)
-    with c5:
-        if has("Season"):
-            put("Season", input_widget("Season", key="id_Season"))
-    with c6:
-        if has("Sexe"):
-            put("Sexe", input_widget("Sexe", key="id_Sexe"))
+        # Option B (si tu veux la même “carte” que ton hero, décommente ça)
+        # st.markdown("<div class='lyrae-illustration'>", unsafe_allow_html=True)
+        # st.image("https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/equiphoto.png", use_container_width=True)
+        # st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
@@ -1688,6 +1704,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
