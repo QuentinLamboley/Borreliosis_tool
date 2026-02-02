@@ -1303,13 +1303,13 @@ if active_tab == "Identité":
         with c2:
             st.caption("")
 
-        c3, c4 = st.columns(2)
-        with c3:
-            if has("Age_du_cheval"):
-                put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
-        with c4:
-            if has("Type_de_cheval"):
-                put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
+        # Âge puis Type EN COLONNE (stacked)
+if has("Age_du_cheval"):
+    put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
+
+if has("Type_de_cheval"):
+    put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
+
 
         c5, c6 = st.columns(2)
         with c5:
@@ -1704,6 +1704,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
