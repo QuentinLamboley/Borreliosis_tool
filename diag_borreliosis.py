@@ -519,21 +519,41 @@ def risk_class_from_geo(lat_wgs84: float, lon_wgs84: float, factor_levels: dict)
 def geocode_address(address: str):
     if not address or address.strip() == "":
         return None
-    url = f"https://nominatim.openstreetmap.org/search?format=json&limit=1&q={quote_plus(address)}"
-    headers = {"User-Agent": f"LYRAE-Streamlit/1.0 ({CONTACT_EMAIL})"}
-    try:
-        r = requests.get(url, headers=headers, timeout=12)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        if not data:
-            return None
-        lat = float(data[0]["lat"])
-        lon = float(data[0]["lon"])
-        disp = data[0].get("display_name", "")
-        return {"lat": lat, "lon": lon, "display_name": disp}
-    except Exception:
-        return None
+
+    # Fallbacks : adresse complète puis requête plus "large" (souvent CP+Ville)
+    addr = " ".join(address.split())
+    parts = addr.split()
+    fallback_cp_city = " ".join(parts[-2:]) if len(parts) >= 2 else addr
+
+    queries = [addr]
+    if fallback_cp_city and fallback_cp_city != addr:
+        queries.append(fallback_cp_city)
+
+    headers = {
+        "User-Agent": f"LYRAE/1.0 ({CONTACT_EMAIL})",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.6",
+    }
+
+    for q in queries:
+        url = (
+            "https://nominatim.openstreetmap.org/search"
+            f"?format=json&limit=1&addressdetails=1&countrycodes=fr&q={quote_plus(q)}"
+        )
+        try:
+            r = requests.get(url, headers=headers, timeout=12)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            if not data:
+                continue
+            lat = float(data[0]["lat"])
+            lon = float(data[0]["lon"])
+            disp = data[0].get("display_name", "")
+            return {"lat": lat, "lon": lon, "display_name": disp, "raw": data[0]}
+        except Exception:
+            continue
+
+    return None
 
 
 def render_map(lat: float, lon: float, zoom: int = 14):
@@ -589,6 +609,7 @@ def render_map(lat: float, lon: float, zoom: int = 14):
     </html>
     """
     components.html(html, height=440)
+
 
 
 # ============================================================
@@ -1076,6 +1097,10 @@ with tab_context:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+with st.expander("🛠️ Debug localisation (Nominatim)", expanded=False):
+    st.write("Adresse envoyée:", full_address if do_locate else "(pas de requête)")
+    st.write("geo (réponse):", st.session_state.get("geo", None))
+    st.write("risk_class:", st.session_state.get("risk_class", None))
 
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -1285,3 +1310,4 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
