@@ -1384,18 +1384,28 @@ elif active_tab == "Contexte & exposition":
         unsafe_allow_html=True
     )
 
-    left, right = st.columns([1.05, 1.0], gap="large")
+    # ✅ Nouveau layout : 3 questions à gauche (stacked) + image à droite
+q_left, q_right = st.columns([1.25, 0.75], gap="large")
 
-    with left:
-        if has("Tiques_semaines_précédentes"):
-            put("Tiques_semaines_précédentes", input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes"))
+with q_left:
+    if has("Tiques_semaines_précédentes"):
+        put("Tiques_semaines_précédentes",
+            input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes"))
 
-    with right:
-        if has("Exterieur_vegetalisé") or has("Exterieur_vegetalise"):
-            col_ui = "Exterieur_vegetalisé" if has("Exterieur_vegetalisé") else "Exterieur_vegetalise"
-            put(col_ui, input_widget(col_ui, key="ctx_Exterieur_vegetalise"))
-        if has("Freq_acces_exterieur_sem"):
-            put("Freq_acces_exterieur_sem", input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem"))
+    if has("Exterieur_vegetalisé") or has("Exterieur_vegetalise"):
+        col_ui = "Exterieur_vegetalisé" if has("Exterieur_vegetalisé") else "Exterieur_vegetalise"
+        put(col_ui, input_widget(col_ui, key="ctx_Exterieur_vegetalise"))
+
+    if has("Freq_acces_exterieur_sem"):
+        put("Freq_acces_exterieur_sem",
+            input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem"))
+
+with q_right:
+    st.image(
+        "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/ixodesricinusticas.png",
+        use_container_width=True
+    )
+
 
     # ============================================================
     # Localisation du cheval (RESTE IDENTIQUE)
@@ -1733,6 +1743,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
