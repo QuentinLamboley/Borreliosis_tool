@@ -1344,13 +1344,12 @@ if active_tab == "Identité":
             put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
 
 
-        c5, c6 = st.columns(2)
-        with c5:
-            if has("Season"):
-                put("Season", input_widget("Season", key="id_Season"))
-        with c6:
-            if has("Sexe"):
-                put("Sexe", input_widget("Sexe", key="id_Sexe"))
+        if has("Season"):
+            put("Season", input_widget("Season", key="id_Season"))
+
+        if has("Sexe"):
+            put("Sexe", input_widget("Sexe", key="id_Sexe"))
+
 
     with right:
         # Option A (simple)
@@ -1737,6 +1736,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
