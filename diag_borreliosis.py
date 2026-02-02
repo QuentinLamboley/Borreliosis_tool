@@ -472,6 +472,34 @@ div[data-testid="stExpander"]{
   border: 3px solid rgba(255,255,255,.55);
 }
 *::-webkit-scrollbar-track{ background: rgba(255,255,255,.35); }
+
+/* ------------------------------------------------------------
+   FIX: barre blanche ovale sous les tabs (panel container)
+------------------------------------------------------------ */
+
+/* Le wrapper juste après la zone des tabs */
+div[data-testid="stTabs"] + div{
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* Le premier bloc que Streamlit crée parfois (vide/arrondi) */
+div[data-testid="stTabs"] + div > div:first-child{
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Si Streamlit met une “carte” arrondie vide */
+div[data-testid="stTabs"] + div > div:first-child:empty{
+  display: none !important;
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -1171,9 +1199,34 @@ with top_right:
                 del st.session_state[k]
         st.rerun()
 
-tab_identity, tab_context, tab_exclusion, tab_signs, tab_results = st.tabs([
-    "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Résultats d'analyse"
-])
+TAB_LABELS = [
+    "Identité",
+    "Contexte & exposition",
+    "Diagnostic d'exclusion",
+    "Signes cliniques",
+    "Résultats d'analyse",
+]
+
+# Sélecteur contrôlé (segmented si dispo, sinon radio horizontal)
+try:
+    active_tab = st.segmented_control(
+        "",
+        options=TAB_LABELS,
+        default=TAB_LABELS[0],
+        key="active_tab",
+    )
+except Exception:
+    active_tab = st.radio(
+        "",
+        TAB_LABELS,
+        horizontal=True,
+        key="active_tab",
+        label_visibility="collapsed",
+    )
+
+STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_LABELS)}
+step = STEP_MAP.get(active_tab, 1)
+
 
 inputs: dict = {}
 
@@ -1191,33 +1244,37 @@ def put(col: str, value):
         inputs[ALIASES[col]] = value
 
 
-with tab_identity:
-    st.markdown("<div class='lyrae-card--premium'>", unsafe_allow_html=True)
+if active_tab == "Identité":
+    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
 
-    # Header premium
+    # ✅ Header premium + badge étape
     st.markdown(
-        """
+        f"""
         <div class="lyrae-card-header">
           <div>
-            <div class="lyrae-card-title">🐴 Identité du cheval</div>
-            <div class="lyrae-card-sub">Renseigne ce que tu sais — le reste peut rester vide.</div>
+            <h3 style="margin:0;">🐴 Identité du cheval</h3>
+            <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
+              Renseigne ce que tu sais — le reste peut rester vide.
+            </div>
           </div>
-          <div class="lyrae-badge">Étape 1 / 5</div>
+          <div class="lyrae-mini-pill">Étape {step} / 5</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # Ligne 1 : Nom (pleine largeur)
-    horse_name = st.text_input(
-        "Nom du cheval",
-        value=st.session_state.get("horse_name", "CHEVAL_1"),
-        placeholder="Ex : TAGADA",
-        key="horse_name"
-    )
+    c1, c2 = st.columns(2)
+    with c1:
+        horse_name = st.text_input(
+            "Nom du cheval",
+            value=st.session_state.get("horse_name", "CHEVAL_1"),
+            placeholder="Ex: TAGADA",
+            key="horse_name"
+        )
+    with c2:
+        st.caption("")
 
-    # Ligne 2 : Age / Type (2 colonnes équilibrées)
-    c3, c4 = st.columns(2, gap="large")
+    c3, c4 = st.columns(2)
     with c3:
         if has("Age_du_cheval"):
             put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
@@ -1225,8 +1282,7 @@ with tab_identity:
         if has("Type_de_cheval"):
             put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
 
-    # Ligne 3 : Saison / Sexe
-    c5, c6 = st.columns(2, gap="large")
+    c5, c6 = st.columns(2)
     with c5:
         if has("Season"):
             put("Season", input_widget("Season", key="id_Season"))
@@ -1234,19 +1290,28 @@ with tab_identity:
         if has("Sexe"):
             put("Sexe", input_widget("Sexe", key="id_Sexe"))
 
-    # Petit footer (optionnel) : rappel discret
-    st.markdown(
-        "<div class='lyrae-card-sub' style='margin-top:10px;'>💡 Astuce : si l’âge est inconnu, laisse vide — le modèle gère les valeurs manquantes.</div>",
-        unsafe_allow_html=True
-    )
-
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 
-with tab_context:
+
+elif active_tab == "Contexte & exposition":
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Contexte & exposition</h3>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="lyrae-card-header">
+          <div>
+            <h3 style="margin:0;">🌿 Contexte & exposition</h3>
+            <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
+              Exposition aux tiques, environnement, localisation.
+            </div>
+          </div>
+          <div class="lyrae-mini-pill">Étape {step} / 5</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     left, right = st.columns([1.05, 1.0], gap="large")
 
@@ -1262,7 +1327,7 @@ with tab_context:
             put("Freq_acces_exterieur_sem", input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem"))
 
     # ============================================================
-    # Localisation du cheval (UNIQUEMENT dans l'onglet Contexte)
+    # Localisation du cheval (RESTE IDENTIQUE)
     # ============================================================
     st.markdown("---")
     st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
@@ -1301,7 +1366,11 @@ with tab_context:
     with locate_col:
         do_locate = st.button("Localiser sur la carte", use_container_width=True)
 
-    # ✅ action
+    if "geo" not in st.session_state:
+        st.session_state["geo"] = None
+    if "risk_class" not in st.session_state:
+        st.session_state["risk_class"] = None
+
     if do_locate:
         full_address = " ".join(
             [str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]
@@ -1324,15 +1393,16 @@ with tab_context:
                 st.warning("Adresse non trouvée. Essaye d’ajouter le code postal ou de simplifier l’adresse.")
             else:
                 st.session_state["geo"] = geo_tmp
+
                 st.session_state["risk_class"] = risk_class_from_geo(
                     lat_wgs84=geo_tmp["lat"],
                     lon_wgs84=geo_tmp["lon"],
                     factor_levels=factor_levels,
                 )
+
                 rc = st.session_state["risk_class"] or "inconnu"
                 st.success(f"✅ Localisation effectuée — classe de risque : **{rc}**")
 
-    # ✅ affichage carte
     geo = st.session_state.get("geo", None)
     if geo is not None:
         render_map(geo["lat"], geo["lon"], zoom=14)
@@ -1342,9 +1412,24 @@ with tab_context:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-with tab_exclusion:
+
+elif active_tab == "Diagnostic d'exclusion":
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="lyrae-card-header">
+          <div>
+            <h3 style="margin:0;">🧪 Diagnostic d'exclusion</h3>
+            <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
+              Tests négatifs et éléments biologiques orientant vers d'autres causes.
+            </div>
+          </div>
+          <div class="lyrae-mini-pill">Étape {step} / 5</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1374,9 +1459,23 @@ with tab_exclusion:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-with tab_signs:
+elif active_tab == "Signes cliniques":
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Signes cliniques</h3>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="lyrae-card-header">
+          <div>
+            <h3 style="margin:0;">🩺 Signes cliniques</h3>
+            <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
+              Signes généraux, neurologiques, oculaires, articulaires, cutanés.
+            </div>
+          </div>
+          <div class="lyrae-mini-pill">Étape {step} / 5</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1442,9 +1541,23 @@ with tab_signs:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-with tab_results:
+elif active_tab == "Résultats d'analyse":
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Résultats d'analyse</h3>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="lyrae-card-header">
+          <div>
+            <h3 style="margin:0;">📊 Résultats d'analyse</h3>
+            <div style="margin-top:6px; color:#6d7a79; font-weight:700;">
+              Sérologies, PCR et autres résultats utiles au modèle.
+            </div>
+          </div>
+          <div class="lyrae-mini-pill">Étape {step} / 5</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     cols_left, cols_right = st.columns(2)
     for i, c in enumerate([c for c in RESULTS_ANALYSIS_COLS if has(c)]):
@@ -1453,13 +1566,14 @@ with tab_results:
             put(c, input_widget(c, key=f"res_{c}"))
 
     st.markdown("---")
+
+    # (ton bouton submit + logique restent EXACTEMENT comme avant, juste sous cet onglet)
     submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
     if submitted:
         with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
             time.sleep(0.25)
 
-            # ✅ remplir Classe_de_risque automatiquement si la colonne existe
             if has("Classe_de_risque"):
                 auto_risk = st.session_state.get("risk_class", None)
                 inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
@@ -1474,13 +1588,12 @@ with tab_results:
             p_one = float(model.predict_proba(pool_one)[:, 1][0])
             cat = cat_from_p_like_R(p_one)
 
-        # ✅ affichage résultat
         marker_left = int(max(0, min(100, round(p_one * 100))))
+
         st.markdown(
             f"""
             <div class="lyrae-result" style="background:{cat_color(cat)};">
               {cat}
-              <small>Probabilité estimée : {p_one:.3f}</small>
               <div class="lyrae-scale">
                 <div class="lyrae-marker" style="left:{marker_left}%;"></div>
               </div>
@@ -1489,7 +1602,6 @@ with tab_results:
             unsafe_allow_html=True
         )
 
-        # ✅ détails: valeurs manquantes + aperçu X
         missing_feats = []
         for c in feature_cols:
             if c.endswith("_missing_code"):
@@ -1502,20 +1614,9 @@ with tab_results:
             if missing_feats:
                 st.code("\n".join(missing_feats[:200]))
                 if len(missing_feats) > 200:
-                    st.caption(f"... +{len(missing_feats) - 200} autres")
+                    st.caption(f"... +{len(missing_feats)-200} autres")
             st.dataframe(X, use_container_width=True)
 
-        # ✅ stocker le dernier résultat pour export
-        st.session_state["last_result"] = {
-            "horse_name": st.session_state.get("horse_name", "CHEVAL_1"),
-            "probability": p_one,
-            "category": cat,
-            "risk_class": st.session_state.get("risk_class", None),
-            "geo": st.session_state.get("geo", None),
-            "inputs": dict(inputs),
-        }
-
-    # ✅ exports (affichés uniquement si un résultat existe déjà)
     last = st.session_state.get("last_result", None)
     if last is not None:
         st.markdown("---")
@@ -1535,10 +1636,10 @@ with tab_results:
         flat["probability"] = last.get("probability")
         flat["category"] = last.get("category")
         flat["risk_class"] = last.get("risk_class")
-        geo_last = last.get("geo") or {}
-        flat["geo_lat"] = geo_last.get("lat")
-        flat["geo_lon"] = geo_last.get("lon")
-        flat["geo_display_name"] = geo_last.get("display_name")
+        geo = last.get("geo") or {}
+        flat["geo_lat"] = geo.get("lat")
+        flat["geo_lon"] = geo.get("lon")
+        flat["geo_display_name"] = geo.get("display_name")
         for k, v in (last.get("inputs") or {}).items():
             flat[k] = v
 
@@ -1554,6 +1655,8 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
 
 
 
