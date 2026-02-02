@@ -500,6 +500,39 @@ div[data-testid="stTabs"] + div > div:first-child:empty{
   display: none !important;
 }
 
+/* ------------------------------------------------------------
+   Labels sur une seule ligne (no-wrap + ellipsis)
+------------------------------------------------------------ */
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stNumberInput"] label{
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+  max-width: 100% !important;
+}
+
+/* ------------------------------------------------------------
+   Widgets pleine largeur (encadrés même taille)
+------------------------------------------------------------ */
+div[data-testid="stTextInput"],
+div[data-testid="stNumberInput"],
+div[data-testid="stSelectbox"]{
+  width: 100% !important;
+}
+
+div[data-testid="stTextInput"] > div,
+div[data-testid="stNumberInput"] > div,
+div[data-testid="stSelectbox"] > div{
+  width: 100% !important;
+}
+
+/* Selectbox : le combobox prend toute la largeur */
+div[data-testid="stSelectbox"] div[role="combobox"]{
+  width: 100% !important;
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -994,7 +1027,7 @@ QUESTION = {
     "Age_du_cheval": "Quel est l’âge du cheval (années) ?",
     "Sexe": "Quel est le sexe du cheval ?",
     "Type_de_cheval": "Quel est le type de cheval ?",
-    "Season": "Quelle est la saison au moment de la consultation ?",
+    "Season": "Saison au moment de la consultation ?",
 
     "Exterieur_vegetalisé": "Le cheval a-t-il accès à un extérieur végétalisé ?",
     "Exterieur_vegetalise": "Le cheval a-t-il accès à un extérieur végétalisé ?",
@@ -1704,6 +1737,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
