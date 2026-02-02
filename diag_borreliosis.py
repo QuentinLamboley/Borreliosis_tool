@@ -513,47 +513,85 @@ def risk_class_from_geo(lat_wgs84: float, lon_wgs84: float, factor_levels: dict)
 
 
 # ============================================================
-# GEOCODE + MAP (Leaflet)
+# GEOCODE + MAP (Leaflet) — robuste FR (BAN -> Nominatim)
+#   ✅ évite de "cacher" un échec (None) à cause du cache Streamlit
 # ============================================================
-@st.cache_data(show_spinner=False)
+
 def geocode_address(address: str):
+    """
+    Retourne {"lat":..., "lon":..., "display_name":..., "provider":...} ou None.
+    Stratégie:
+      1) BAN (France) -> très fiable
+      2) Nominatim fallback
+    """
     if not address or address.strip() == "":
         return None
 
-    # Fallbacks : adresse complète puis requête plus "large" (souvent CP+Ville)
-    addr = " ".join(address.split())
-    parts = addr.split()
-    fallback_cp_city = " ".join(parts[-2:]) if len(parts) >= 2 else addr
+    q = address.strip()
 
-    queries = [addr]
-    if fallback_cp_city and fallback_cp_city != addr:
-        queries.append(fallback_cp_city)
-
-    headers = {
-        "User-Agent": f"LYRAE/1.0 ({CONTACT_EMAIL})",
-        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.6",
-    }
-
-    for q in queries:
-        url = (
-            "https://nominatim.openstreetmap.org/search"
-            f"?format=json&limit=1&addressdetails=1&countrycodes=fr&q={quote_plus(q)}"
+    # --- 1) BAN (Base Adresse Nationale) : fiable en France
+    try:
+        ban_url = "https://api-adresse.data.gouv.fr/search/"
+        ban_params = {"q": q, "limit": 1}
+        r = requests.get(
+            ban_url,
+            params=ban_params,
+            timeout=12,
+            headers={
+                "User-Agent": f"LYRAE/1.0 ({CONTACT_EMAIL})",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.6",
+            },
         )
-        try:
-            r = requests.get(url, headers=headers, timeout=12)
-            if r.status_code != 200:
-                continue
+        if r.status_code == 200:
             data = r.json()
-            if not data:
-                continue
-            lat = float(data[0]["lat"])
-            lon = float(data[0]["lon"])
-            disp = data[0].get("display_name", "")
-            return {"lat": lat, "lon": lon, "display_name": disp, "raw": data[0]}
-        except Exception:
-            continue
+            feats = data.get("features", [])
+            if feats:
+                coords = feats[0]["geometry"]["coordinates"]  # [lon, lat]
+                props = feats[0].get("properties", {})
+                return {
+                    "lat": float(coords[1]),
+                    "lon": float(coords[0]),
+                    "display_name": props.get("label", q),
+                    "provider": "BAN",
+                }
+    except Exception:
+        pass
 
-    return None
+    # --- 2) Nominatim fallback
+    try:
+        nom_url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "format": "json",
+            "limit": 1,
+            "addressdetails": 1,
+            "countrycodes": "fr",
+            "q": q,
+        }
+        r = requests.get(
+            nom_url,
+            params=params,
+            timeout=12,
+            headers={
+                "User-Agent": f"LYRAE/1.0 ({CONTACT_EMAIL})",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.6",
+            },
+        )
+
+        if r.status_code != 200:
+            # IMPORTANT : on ne cache pas l'échec, et on laisse l'appelant gérer l'affichage
+            return {"__error__": True, "status": r.status_code, "text": r.text[:300], "provider": "Nominatim"}
+
+        data = r.json()
+        if not data:
+            return None
+        lat = float(data[0]["lat"])
+        lon = float(data[0]["lon"])
+        disp = data[0].get("display_name", q)
+        return {"lat": lat, "lon": lon, "display_name": disp, "provider": "Nominatim"}
+
+    except Exception:
+        return None
+
 
 
 def render_map(lat: float, lon: float, zoom: int = 14):
@@ -1078,6 +1116,13 @@ with tab_context:
         else:
             st.session_state["geo"] = geocode_address(full_address)
             geo_tmp = st.session_state.get("geo", None)
+
+# Debug + message utilisateur si échec
+            if isinstance(geo_tmp, dict) and geo_tmp.get("__error__"):
+                st.warning(f"Échec géocodage ({geo_tmp.get('provider')}): HTTP {geo_tmp.get('status')}")
+                st.caption(geo_tmp.get("text", ""))
+                st.session_state["geo"] = None  # on force None pour la suite
+
             time.sleep(0.15)
 
             if geo_tmp is not None:
@@ -1310,4 +1355,5 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
