@@ -1081,71 +1081,100 @@ with tab_context:
         if has("Freq_acces_exterieur_sem"):
             put("Freq_acces_exterieur_sem", input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem"))
 
-    st.markdown("---")
-    st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
+    # ============================================================
+# Contexte & exposition (EXTRAIT COMPLET CONCERNÉ : bloc "Localisation du cheval")
+# ============================================================
+st.markdown("---")
+st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
 
-    # ✅ FIX: NE PAS faire st.session_state["addr_num"] = st.text_input(..., key="addr_num")
-    # On lit le widget dans une variable; Streamlit gère st.session_state automatiquement.
-    a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
-    with a1:
-        num = st.text_input("Numéro", value=st.session_state.get("addr_num", ""), placeholder="N°", key="addr_num")
-    with a2:
-        street = st.text_input("Rue", value=st.session_state.get("addr_street", ""), placeholder="Rue / voie", key="addr_street")
-    with a3:
-        city = st.text_input("Ville", value=st.session_state.get("addr_city", ""), placeholder="Ville", key="addr_city")
-    with a4:
-        cp = st.text_input("Code postal", value=st.session_state.get("addr_cp", ""), placeholder="CP", key="addr_cp")
+a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
+with a1:
+    num = st.text_input(
+        "Numéro",
+        value=st.session_state.get("addr_num", ""),
+        placeholder="N°",
+        key="addr_num",
+    )
+with a2:
+    street = st.text_input(
+        "Rue",
+        value=st.session_state.get("addr_street", ""),
+        placeholder="Rue / voie",
+        key="addr_street",
+    )
+with a3:
+    city = st.text_input(
+        "Ville",
+        value=st.session_state.get("addr_city", ""),
+        placeholder="Ville",
+        key="addr_city",
+    )
+with a4:
+    cp = st.text_input(
+        "Code postal",
+        value=st.session_state.get("addr_cp", ""),
+        placeholder="CP",
+        key="addr_cp",
+    )
 
-    locate_col, info_col = st.columns([0.34, 0.66])
-    with locate_col:
-        do_locate = st.button("Localiser sur la carte", use_container_width=True)
-    with info_col:
-        geo = st.session_state.get("geo", None)
-        risk = st.session_state.get("risk_class", None)
-        if geo is not None:
-            st.caption(f"📍 {geo.get('display_name','')}")
-        if risk is not None:
-            st.caption(f"🧭 Risque estimé : **{risk}**")
+# ✅ bouton
+locate_col, _ = st.columns([0.34, 0.66])
+with locate_col:
+    do_locate = st.button("Localiser sur la carte", use_container_width=True)
 
-    if do_locate:
-        full_address = " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip()
+# ✅ session_state init
+if "geo" not in st.session_state:
+    st.session_state["geo"] = None
+if "risk_class" not in st.session_state:
+    st.session_state["risk_class"] = None
 
-        if full_address == "":
+# ✅ action
+if do_locate:
+    full_address = " ".join(
+        [str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]
+    ).strip()
+
+    if full_address == "":
+        st.session_state["geo"] = None
+        st.session_state["risk_class"] = None
+        st.warning("Adresse incomplète — renseigne au minimum rue + ville (et idéalement le code postal).")
+    else:
+        geo_tmp = geocode_address(full_address)
+
+        # si ton geocode renvoie un dict d'erreur (ex: {"__error__": "...", "status": ...})
+        if isinstance(geo_tmp, dict) and geo_tmp.get("__error__"):
             st.session_state["geo"] = None
             st.session_state["risk_class"] = None
+            st.warning(f"Impossible de localiser l’adresse (HTTP {geo_tmp.get('status')}).")
+        elif geo_tmp is None:
+            st.session_state["geo"] = None
+            st.session_state["risk_class"] = None
+            st.warning("Adresse non trouvée. Essaye d’ajouter le code postal ou de simplifier l’adresse.")
         else:
-            st.session_state["geo"] = geocode_address(full_address)
-            geo_tmp = st.session_state.get("geo", None)
+            st.session_state["geo"] = geo_tmp
 
-# Debug + message utilisateur si échec
-            if isinstance(geo_tmp, dict) and geo_tmp.get("__error__"):
-                st.warning(f"Échec géocodage ({geo_tmp.get('provider')}): HTTP {geo_tmp.get('status')}")
-                st.caption(geo_tmp.get("text", ""))
-                st.session_state["geo"] = None  # on force None pour la suite
+            # ✅ (AJOUT) calcul risque depuis raster
+            st.session_state["risk_class"] = risk_class_from_geo(
+                lat_wgs84=geo_tmp["lat"],
+                lon_wgs84=geo_tmp["lon"],
+                factor_levels=factor_levels,
+            )
 
-            time.sleep(0.15)
+            rc = st.session_state["risk_class"] or "inconnu"
+            st.success(f"✅ Localisation effectuée — classe de risque : **{rc}**")
 
-            if geo_tmp is not None:
-                st.session_state["risk_class"] = risk_class_from_geo(
-                    lat_wgs84=geo_tmp["lat"],
-                    lon_wgs84=geo_tmp["lon"],
-                    factor_levels=factor_levels
-                )
-            else:
-                st.session_state["risk_class"] = None
+# ✅ affichage carte
+geo = st.session_state.get("geo", None)
+if geo is not None:
+    render_map(geo["lat"], geo["lon"], zoom=14)
+else:
+    render_map(46.603354, 1.888334, zoom=5)
 
-    geo = st.session_state.get("geo", None)
-    if geo is not None:
-        render_map(geo["lat"], geo["lon"], zoom=14)
-    else:
-        render_map(46.603354, 1.888334, zoom=5)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with st.expander("🛠️ Debug localisation (Nominatim)", expanded=False):
-    st.write("Adresse envoyée:", full_address if do_locate else "(pas de requête)")
-    st.write("geo (réponse):", st.session_state.get("geo", None))
-    st.write("risk_class:", st.session_state.get("risk_class", None))
+# ✅ (OPTIONNEL) debug repliable (au lieu d'afficher geo brut en permanence)
+with st.expander("🔧 Debug localisation (Nominatim/BAN)", expanded=False):
+    st.write("Adresse envoyée :", " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip())
+    st.write("geo (réponse) :", st.session_state.get("geo", None))
+    st.write("risk_class :", st.session_state.get("risk_class", None))
 
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -1259,50 +1288,43 @@ with tab_results:
             put(c, input_widget(c, key=f"res_{c}"))
 
     st.markdown("---")
-    submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
+    # ============================================================
+# Résultats d'analyse (EXTRAIT COMPLET CONCERNÉ : auto Classe_de_risque au submit)
+# ============================================================
+submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
-    if submitted:
-        with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
-            time.sleep(0.25)
+if submitted:
+    with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
+        time.sleep(0.25)
 
-            if has("Classe_de_risque"):
-                auto_risk = st.session_state.get("risk_class", None)
-                inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
+        # ✅ remplir Classe_de_risque automatiquement si la colonne existe
+        if has("Classe_de_risque"):
+            auto_risk = st.session_state.get("risk_class", None)
+            inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
 
-            X = build_template(feature_cols)
-            X = apply_inputs_to_template(X, inputs)
+        X = build_template(feature_cols)
+        X = apply_inputs_to_template(X, inputs)
 
-            X = fill_missing_code_like_R(X, analysis_cols_set)
-            X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
+        X = fill_missing_code_like_R(X, set(analysis_cols))
+        X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
-            pool_one = Pool(X, cat_features=cat_idx)
-            p_one = float(model.predict_proba(pool_one)[:, 1][0])
-            cat = cat_from_p_like_R(p_one)
+        pool_one = Pool(X, cat_features=cat_idx)
+        p_one = float(model.predict_proba(pool_one)[:, 1][0])
+        cat = cat_from_p_like_R(p_one)
 
-            st.session_state["last_result"] = {
-                "horse_name": st.session_state.get("horse_name", "CHEVAL_1"),
-                "probability": p_one,
-                "category": cat,
-                "inputs": {k: (None if pd.isna(v) else v) for k, v in inputs.items()},
-                "geo": st.session_state.get("geo", None),
-                "risk_class": st.session_state.get("risk_class", None),
-            }
+    marker_left = int(max(0, min(100, round(p_one * 100))))
 
-        marker_left = int(max(0, min(100, round(p_one * 100))))
-
-        st.markdown(
-            f"""
-            <div class="lyrae-result" style="background:{cat_color(cat)};">
-              {cat}
-              <small>Probabilité estimée : <b>{p_one:.3f}</b> (≈ {marker_left}%)</small>
-              <div class="lyrae-scale">
-                <div class="lyrae-marker" style="left:{marker_left}%;"></div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
+    st.markdown(
+        f"""
+        <div class="lyrae-result" style="background:{cat_color(cat)};">
+          {cat}
+          <div class="lyrae-scale">
+            <div class="lyrae-marker" style="left:{marker_left}%;"></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
         missing_feats = []
         for c in feature_cols:
             if c.endswith("_missing_code"):
@@ -1355,5 +1377,6 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
