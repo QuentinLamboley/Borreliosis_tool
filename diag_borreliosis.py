@@ -90,38 +90,67 @@ st.set_page_config(page_title=f"{APP_BRAND} — {APP_TITLE}", layout="wide")
 
 
 # ============================================================
-# STYLE
+# STYLE (premium + tabs pill + inputs luxe + suppressions UI)
 # ============================================================
 CSS = """
 <style>
+/* ------------------------------------------------------------
+   Streamlit chrome
+------------------------------------------------------------ */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
+/* Optionnel: cache le header blanc "Streamlit" résiduel selon versions */
+div[data-testid="stHeader"] { display: none !important; }
+
+/* ------------------------------------------------------------
+   Design tokens
+------------------------------------------------------------ */
 :root{
   --g900:#0e3b35;
   --g850:#124640;
   --g800:#154b43;
+
   --beige:#f4f2ed;
   --beige2:#efe9df;
+
   --ink:#1d2a2a;
+
   --accent:#b08b5a;
   --accent2:#d2b48c;
-  --card:#ffffffcc;
+
+  --card: rgba(255,255,255,.78);
+  --card-strong: rgba(255,255,255,.88);
+
   --shadow-soft: 0 8px 22px rgba(0,0,0,.10);
+  --shadow-premium: 0 14px 34px rgba(0,0,0,.08);
+  --shadow-focus: 0 0 0 4px rgba(176,139,90,.18);
+
   --radius: 18px;
+  --radius-xl: 22px;
 }
 
+/* ------------------------------------------------------------
+   Base layout
+------------------------------------------------------------ */
 .stApp{
   background: radial-gradient(1200px 600px at 50% 0%, #ffffff 0%, var(--beige) 60%, var(--beige2) 100%);
   color: var(--ink);
 }
+
 .block-container{
   padding-top: 0rem;
   padding-bottom: 2.2rem;
   max-width: 1100px;
 }
 
+/* Un peu plus d'air entre sections */
+.block-container > div { gap: 14px; }
+
+/* ------------------------------------------------------------
+   Topbar
+------------------------------------------------------------ */
 .lyrae-topbar{
   position: sticky;
   top: 0;
@@ -133,6 +162,7 @@ header {visibility: hidden;}
   padding-left: calc(22px + 9999px);
   padding-right: calc(22px + 9999px);
 }
+
 .lyrae-topbar-inner{
   max-width: 1100px;
   margin: 0 auto;
@@ -141,15 +171,17 @@ header {visibility: hidden;}
   justify-content:space-between;
   gap: 16px;
 }
+
 .lyrae-brand{
   display:flex;
   align-items:center;
   gap: 12px;
   color: #ffffff;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: .6px;
   font-size: 20px;
 }
+
 .lyrae-logo{
   width: 38px;
   height: 38px;
@@ -161,54 +193,108 @@ header {visibility: hidden;}
 }
 .lyrae-logo img{ width:100%; height:100%; display:block; }
 
+/* ------------------------------------------------------------
+   Tabs — pill premium
+------------------------------------------------------------ */
+div[data-testid="stTabs"]{
+  margin-top: 6px !important;
+}
+
+/* Pastilles */
 div[data-testid="stTabs"] button[role="tab"]{
-  border-radius: 12px !important;
-  padding: 10px 14px !important;
-  margin-right: 8px !important;
-  background: rgba(14,59,53,.07) !important;
-  border: 1px solid rgba(14,59,53,.18) !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  margin-right: 10px !important;
+  background: rgba(255,255,255,.65) !important;
+  border: 1px solid rgba(14,59,53,.14) !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,.05) !important;
   color: rgba(14,59,53,.96) !important;
-  font-weight: 780 !important;
-}
-div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
-  background: rgba(14,59,53,.13) !important;
-  border: 2px solid rgba(14,59,53,.35) !important;
-  box-shadow: 0 8px 18px rgba(0,0,0,.08) !important;
-}
-div[data-baseweb="tab-highlight"]{
-  background-color: var(--g900) !important;
+  font-weight: 880 !important;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
 }
 
-div[data-testid="stSelectbox"] div[role="combobox"]{
-  background: var(--g900) !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(255,255,255,.20) !important;
-}
-div[data-testid="stSelectbox"] div[role="combobox"] *{ color: #ffffff !important; }
-div[role="listbox"]{
-  background: var(--g900) !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(255,255,255,.18) !important;
-}
-div[role="listbox"] *{ color: #ffffff !important; }
-
-div[data-testid="stTextInput"] > div > div,
-div[data-testid="stNumberInput"] > div > div{
-  border-radius: 12px !important;
-  border: 1px solid rgba(14,59,53,.22) !important;
+div[data-testid="stTabs"] button[role="tab"]:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.08) !important;
   background: rgba(255,255,255,.78) !important;
 }
 
-div[data-testid="stSelectbox"] label,
-div[data-testid="stTextInput"] label,
-div[data-testid="stNumberInput"] label {
-  color: var(--g900) !important;
-  font-weight: 780 !important;
+/* Sélection */
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
+  background: rgba(14,59,53,.10) !important;
+  border: 1px solid rgba(14,59,53,.30) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.10) !important;
 }
 
+div[data-baseweb="tab-highlight"]{
+  background-color: transparent !important; /* on n'utilise plus la barre */
+}
+
+/* ------------------------------------------------------------
+   (Optionnel) Masquer la "barre/zone blanche vide" sous les tabs
+   (varie selon version Streamlit -> deux sélecteurs)
+------------------------------------------------------------ */
+div[data-testid="stTabs"] + div > div:empty { display: none !important; }
+div[data-testid="stTabs"] + div:has(> div:empty) { display: none !important; }
+
+/* ------------------------------------------------------------
+   Inputs — luxe + focus ring
+------------------------------------------------------------ */
+
+/* Labels */
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stNumberInput"] label{
+  color: var(--g900) !important;
+  font-weight: 880 !important;
+  letter-spacing: .2px;
+}
+
+/* Text & number wrapper */
+div[data-testid="stTextInput"] > div > div,
+div[data-testid="stNumberInput"] > div > div{
+  border-radius: 14px !important;
+  border: 1px solid rgba(14,59,53,.22) !important;
+  background: rgba(255,255,255,.82) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+/* Inner input */
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input{
+  padding: 12px 12px !important;
+}
+
+/* Focus ring */
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus{
+  outline: none !important;
+  box-shadow: var(--shadow-focus) !important;
+  border: 1px solid rgba(176,139,90,.65) !important;
+}
+
+/* Selectbox */
+div[data-testid="stSelectbox"] div[role="combobox"]{
+  background: rgba(14,59,53,.90) !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(14,59,53,.28) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+}
+div[data-testid="stSelectbox"] div[role="combobox"] *{ color: #ffffff !important; }
+
+div[role="listbox"]{
+  background: rgba(14,59,53,.96) !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255,255,255,.16) !important;
+}
+div[role="listbox"] *{ color: #ffffff !important; }
+
+/* ------------------------------------------------------------
+   Hero
+------------------------------------------------------------ */
 .lyrae-hero{ padding: 56px 0 24px 0; text-align: center; }
-.lyrae-hero h1{ margin:0; font-size:42px; line-height:1.12; font-weight:780; color: var(--g900); }
-.lyrae-hero p{ margin:14px auto 0 auto; max-width:820px; font-size:17px; color:#5b6b6a; }
+.lyrae-hero h1{ margin:0; font-size:42px; line-height:1.12; font-weight:900; color: var(--g900); letter-spacing: .2px; }
+.lyrae-hero p{ margin:14px auto 0 auto; max-width:820px; font-size:17px; color:rgba(29,42,42,.64); }
 
 .lyrae-illustration{
   margin: 30px auto 24px auto;
@@ -219,48 +305,118 @@ div[data-testid="stNumberInput"] label {
   border: 1px solid rgba(0,0,0,.05);
 }
 
+/* ------------------------------------------------------------
+   Titles / cards
+------------------------------------------------------------ */
 .lyrae-cta-wrap{ display:flex; align-items:center; justify-content:center; margin-top:18px; }
-.lyrae-disclaimer{ margin-top:18px; color:#6d7a79; font-size:14px; }
+.lyrae-disclaimer{ margin-top:18px; color:rgba(29,42,42,.58); font-size:14px; }
 
-.lyrae-page-title{ margin: 26px 0 6px 0; font-size: 28px; font-weight: 780; color: var(--g900); }
+.lyrae-page-title{ margin: 26px 0 6px 0; font-size: 30px; font-weight: 950; color: var(--g900); letter-spacing: .2px; }
 
 .lyrae-card{
   background: var(--card);
   border: 1px solid rgba(14,59,53,.12);
   border-radius: var(--radius);
   box-shadow: var(--shadow-soft);
-  padding: 18px 18px 10px 18px;
+  padding: 18px 18px 12px 18px;
 }
-.lyrae-card h3{ margin:0 0 10px 0; font-size:18px; font-weight:800; color: var(--g900); }
+.lyrae-card h3{ margin:0 0 10px 0; font-size:18px; font-weight:900; color: var(--g900); }
 
-.stButton > button, .stDownloadButton > button{
-  border-radius: 12px !important;
-  padding: 0.75rem 1.1rem !important;
-  font-weight: 800 !important;
-  border: 1px solid rgba(14,59,53,.25) !important;
+/* Premium card (pour "Identité" etc.) */
+.lyrae-card--premium{
+  background: var(--card-strong);
+  border: 1px solid rgba(14,59,53,.12);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-premium);
+  padding: 18px 18px 14px 18px;
 }
+
+/* Header premium */
+.lyrae-card-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.lyrae-card-title{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 950;
+  color: var(--g900);
+}
+.lyrae-card-sub{
+  margin-top: 4px;
+  color: rgba(29,42,42,.62);
+  font-size: 13px;
+  font-weight: 650;
+}
+.lyrae-badge{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(14,59,53,.08);
+  border: 1px solid rgba(14,59,53,.16);
+  color: rgba(14,59,53,.92);
+  font-weight: 900;
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------
+   Buttons
+------------------------------------------------------------ */
+.stButton > button, .stDownloadButton > button{
+  border-radius: 14px !important;
+  padding: 0.80rem 1.15rem !important;
+  font-weight: 900 !important;
+  border: 1px solid rgba(14,59,53,.22) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.08);
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
 .stButton > button{
   background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
   color: rgba(14,59,53,.98) !important;
 }
 
+.stButton > button:hover,
+.stDownloadButton > button:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(0,0,0,.10);
+  filter: brightness(1.02);
+}
+
+.stButton > button:active,
+.stDownloadButton > button:active{
+  transform: translateY(0px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.08);
+}
+
+/* ------------------------------------------------------------
+   Result card
+------------------------------------------------------------ */
 .lyrae-result{
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 18px 18px;
   color: white;
-  font-weight: 900;
+  font-weight: 950;
   font-size: 22px;
   text-align: center;
-  box-shadow: 0 10px 22px rgba(0,0,0,.12);
+  box-shadow: 0 12px 28px rgba(0,0,0,.12);
   border: 1px solid rgba(255,255,255,.28);
 }
 .lyrae-result small{
   display:block;
   margin-top:8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 750;
   opacity: .92;
 }
+
 .lyrae-scale{
   margin-top: 14px;
   border-radius: 16px;
@@ -279,6 +435,8 @@ div[data-testid="stNumberInput"] label {
   box-shadow: 0 6px 16px rgba(0,0,0,.18);
   transform: translateX(-50%);
 }
+
+/* Pills */
 .lyrae-mini-pill{
   display:inline-block;
   padding: 6px 10px;
@@ -286,12 +444,38 @@ div[data-testid="stNumberInput"] label {
   background: rgba(14,59,53,.08);
   border: 1px solid rgba(14,59,53,.14);
   color: rgba(14,59,53,.92);
-  font-weight: 780;
+  font-weight: 850;
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------
+   Expander + dataframe (petit polish)
+------------------------------------------------------------ */
+details{
+  border-radius: 16px !important;
+}
+
+div[data-testid="stExpander"]{
+  border-radius: 16px !important;
+  border: 1px solid rgba(14,59,53,.10) !important;
+  background: rgba(255,255,255,.55) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.05) !important;
+}
+
+/* ------------------------------------------------------------
+   Scrollbar (subtil)
+------------------------------------------------------------ */
+*::-webkit-scrollbar{ width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb{
+  background: rgba(14,59,53,.25);
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,.55);
+}
+*::-webkit-scrollbar-track{ background: rgba(255,255,255,.35); }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
 
 
 # ============================================================
@@ -1008,22 +1192,32 @@ def put(col: str, value):
 
 
 with tab_identity:
-    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Identité du cheval</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='lyrae-card--premium'>", unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        # ✅ FIX: ne pas assigner à st.session_state["horse_name"] si key="horse_name"
-        horse_name = st.text_input(
-            "Nom du cheval",
-            value=st.session_state.get("horse_name", "CHEVAL_1"),
-            placeholder="Ex: TAGADA",
-            key="horse_name"
-        )
-    with c2:
-        st.caption("")
+    # Header premium
+    st.markdown(
+        """
+        <div class="lyrae-card-header">
+          <div>
+            <div class="lyrae-card-title">🐴 Identité du cheval</div>
+            <div class="lyrae-card-sub">Renseigne ce que tu sais — le reste peut rester vide.</div>
+          </div>
+          <div class="lyrae-badge">Étape 1 / 5</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    c3, c4 = st.columns(2)
+    # Ligne 1 : Nom (pleine largeur)
+    horse_name = st.text_input(
+        "Nom du cheval",
+        value=st.session_state.get("horse_name", "CHEVAL_1"),
+        placeholder="Ex : TAGADA",
+        key="horse_name"
+    )
+
+    # Ligne 2 : Age / Type (2 colonnes équilibrées)
+    c3, c4 = st.columns(2, gap="large")
     with c3:
         if has("Age_du_cheval"):
             put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval"))
@@ -1031,7 +1225,8 @@ with tab_identity:
         if has("Type_de_cheval"):
             put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval"))
 
-    c5, c6 = st.columns(2)
+    # Ligne 3 : Saison / Sexe
+    c5, c6 = st.columns(2, gap="large")
     with c5:
         if has("Season"):
             put("Season", input_widget("Season", key="id_Season"))
@@ -1039,7 +1234,14 @@ with tab_identity:
         if has("Sexe"):
             put("Sexe", input_widget("Sexe", key="id_Sexe"))
 
+    # Petit footer (optionnel) : rappel discret
+    st.markdown(
+        "<div class='lyrae-card-sub' style='margin-top:10px;'>💡 Astuce : si l’âge est inconnu, laisse vide — le modèle gère les valeurs manquantes.</div>",
+        unsafe_allow_html=True
+    )
+
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 with tab_context:
@@ -1352,6 +1554,7 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
