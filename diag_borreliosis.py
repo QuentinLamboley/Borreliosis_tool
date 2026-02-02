@@ -1219,7 +1219,7 @@ with top_left:
         st.session_state["page"] = "home"
         st.rerun()
 with top_right:
-    if st.button("🧹 Réinitialiser le formulaire", use_container_width=True):
+    if st.button("🪦 Réinitialiser le formulaire", use_container_width=True):
         for k in ["geo","risk_class","horse_name","addr_num","addr_street","addr_city","addr_cp","last_result"]:
             if k in st.session_state:
                 del st.session_state[k]
@@ -1688,6 +1688,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
