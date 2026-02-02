@@ -1,50 +1,81 @@
+# -*- coding: utf-8 -*-
+"""
+LYRAE / RESOLVE — Streamlit predictor (CatBoost)
+Single-file app.py
+
+✅ Inclus :
+- UI premium (topbar + hero + cards + tabs + jauge)
+- Chargement modèle .cbm + meta.json (cache)
+- Contrôle colonnes vs XLSX de référence (GitHub raw)
+- Géocodage adresse (Nominatim) + carte Leaflet nette (sans dépendance Python)
+- Classe_de_risque auto via raster GeoTIFF (catégories 1/2/3) depuis lat/lon
+- Remplissage *_missing_code à la manière R (1/2 selon analysis_cols)
+- Coercition types / niveaux catégoriels (factor_levels)
+- Widgets intelligents (Season triée, freq sorties max 7, oui/non)
+- Persistance session (nom cheval + adresse + géoloc + risque)
+- Résultat : catégorie + probabilité + marqueur
+- Export cas (JSON + CSV) + reset
+
+Dépendances (pip) :
+streamlit catboost pandas numpy requests openpyxl rasterio pyproj
+"""
+
 import json
 import io
-import re
+import time
+import requests
 import unicodedata
 from pathlib import Path
+from urllib.parse import quote_plus
+
 import numpy as np
 import pandas as pd
 import streamlit as st
-from catboost import CatBoostClassifier, Pool
-import time
-import requests
-from urllib.parse import quote_plus
-import streamlit.components.v1 as components  # ✅ carte nette via Leaflet sans dépendance Python
+import streamlit.components.v1 as components
 
-# ✅ (AJOUT) lecture raster + reprojection points
+from catboost import CatBoostClassifier, Pool
+
+# Raster risk
 import rasterio
 from rasterio.transform import rowcol
 from pyproj import Transformer
 
-# ============================================================
-# LYRAE / RESOLVE — Streamlit predictor (CatBoost)
-# ============================================================
 
+# ============================================================
+# APP CONFIG
+# ============================================================
 APP_BRAND = "LYRAE"
 APP_TITLE = "Aide au diagnostic de la borréliose de Lyme équine"
 APP_SUBTITLE = "Analyse structurée basée sur les données cliniques, biologiques et contextuelles."
 MODEL_DEFAULT = "equine_lyme_catboost.cbm"
 META_DEFAULT  = "equine_lyme_catboost_meta.json"
+
 REF_XLSX_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/jeu_fictif_lyme_equine_cas_parfaits.xlsx"
-REF_XLSX_SHEET = 0  # ou "Sheet1"
-REF_XLSX_IGNORE = {"target", "y", "label"}  # colonnes non-features si besoin
+REF_XLSX_SHEET = 0
+REF_XLSX_IGNORE = {"target", "y", "label"}
 
-HERO_IMAGE_URL  = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
-MINI_LOGO_URL   = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/minilyrae.png"
+HERO_IMAGE_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/Lyrae.png"
+MINI_LOGO_URL  = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/minilyrae.png"
 
-# ✅ (AJOUT) raster de risque (catégories 1/2/3)
+# Raster de risque (catégories 1/2/3)
 RISK_RASTER_URL = "https://raw.githubusercontent.com/QuentinLamboley/Borreliosis_tool/main/mean_R1_RF_prob_rep01_05_CATEG_3classes.tif"
 
+# Recommandation : mettre une vraie adresse mail de contact pour le User-Agent
+CONTACT_EMAIL = st.secrets.get("contact_email", "contact@exemple.org") if hasattr(st, "secrets") else "contact@exemple.org"
+
+
+# ============================================================
+# VARIABLES (met à jour selon ton modèle si besoin)
+# ============================================================
 analysis_cols = [
-  "piroplasmose_neg","ehrlichiose_neg","Bilan_sanguin_normal","NFS_normale",
-  "Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux",
-  "SAA_normal","Fibrinogène_normal",
-  "ELISA_pos","ELISA_OspA_pos","ELISA_OspF_pos","ELISA_p39","WB_pos","PCR_sang_pos","SNAP_C6_pos","IFAT_pos",
-  "PCR_LCR_pos","PCR_synoviale_pos","PCR_peau_pos","PCR_humeur_aqueuse_pos","PCR_tissu_nerveux_pos",
-  "PCR_liquide_articulaire_pos","LCR_pleiocytose","LCR_proteines_augmentees",
-  "IHC_tissulaire_pos","Coloration_argent_pos","FISH_tissulaire_pos",
-  "CVID","Hypoglobulinemie"
+    "piroplasmose_neg","ehrlichiose_neg","ehrlichiose_negatif","Bilan_sanguin_normal","NFS_normale",
+    "Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux",
+    "SAA_normal","Fibrinogène_normal",
+    "ELISA_pos","ELISA_OspA_pos","ELISA_OspF_pos","ELISA_p39","WB_pos","PCR_sang_pos","SNAP_C6_pos","IFAT_pos",
+    "PCR_LCR_pos","PCR_synoviale_pos","PCR_peau_pos","PCR_humeur_aqueuse_pos","PCR_tissu_nerveux_pos",
+    "PCR_liquide_articulaire_pos","LCR_pleiocytose","LCR_proteines_augmentees",
+    "IHC_tissulaire_pos","Coloration_argent_pos","FISH_tissulaire_pos",
+    "CVID","Hypoglobulinemie"
 ]
 
 RESULTS_ANALYSIS_COLS = [
@@ -59,6 +90,10 @@ RESULTS_ANALYSIS_COLS = [
 
 st.set_page_config(page_title=f"{APP_BRAND} — {APP_TITLE}", layout="wide")
 
+
+# ============================================================
+# STYLE
+# ============================================================
 CSS = """
 <style>
 #MainMenu {visibility: hidden;}
@@ -126,10 +161,27 @@ header {visibility: hidden;}
   border: 1px solid rgba(255,255,255,.25);
   flex: 0 0 auto;
 }
-.lyrae-logo img{
-  width:100%;
-  height:100%;
-  display:block;
+.lyrae-logo img{ width:100%; height:100%; display:block; }
+
+.lyrae-navbtns{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.lyrae-navbtn{
+  display:inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.22);
+  color: #ffffff;
+  font-weight: 750;
+  font-size: 13px;
+  text-decoration: none;
+  user-select:none;
+}
+.lyrae-navbtn:hover{
+  background: rgba(255,255,255,.18);
 }
 
 div[data-testid="stTabs"] button[role="tab"]{
@@ -155,17 +207,13 @@ div[data-testid="stSelectbox"] div[role="combobox"]{
   border-radius: 12px !important;
   border: 1px solid rgba(255,255,255,.20) !important;
 }
-div[data-testid="stSelectbox"] div[role="combobox"] *{
-  color: #ffffff !important;
-}
+div[data-testid="stSelectbox"] div[role="combobox"] *{ color: #ffffff !important; }
 div[role="listbox"]{
   background: var(--g900) !important;
   border-radius: 12px !important;
   border: 1px solid rgba(255,255,255,.18) !important;
 }
-div[role="listbox"] *{
-  color: #ffffff !important;
-}
+div[role="listbox"] *{ color: #ffffff !important; }
 
 div[data-testid="stTextInput"] > div > div,
 div[data-testid="stNumberInput"] > div > div{
@@ -181,23 +229,10 @@ div[data-testid="stNumberInput"] label {
   font-weight: 780 !important;
 }
 
-.lyrae-hero{
-  padding: 56px 0 24px 0;
-  text-align: center;
-}
-.lyrae-hero h1{
-  margin: 0;
-  font-size: 42px;
-  line-height: 1.12;
-  font-weight: 780;
-  color: var(--g900);
-}
-.lyrae-hero p{
-  margin: 14px auto 0 auto;
-  max-width: 820px;
-  font-size: 17px;
-  color: #5b6b6a;
-}
+.lyrae-hero{ padding: 56px 0 24px 0; text-align: center; }
+.lyrae-hero h1{ margin:0; font-size:42px; line-height:1.12; font-weight:780; color: var(--g900); }
+.lyrae-hero p{ margin:14px auto 0 auto; max-width:820px; font-size:17px; color:#5b6b6a; }
+
 .lyrae-illustration{
   margin: 30px auto 24px auto;
   border-radius: 22px;
@@ -206,33 +241,12 @@ div[data-testid="stNumberInput"] label {
   overflow:hidden;
   border: 1px solid rgba(0,0,0,.05);
 }
-.lyrae-cta-wrap{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  margin-top: 18px;
-}
-.lyrae-disclaimer{
-  margin-top: 18px;
-  color: #6d7a79;
-  font-size: 14px;
-}
-.lyrae-footerlinks{
-  margin-top: 18px;
-  color: #6d7a79;
-  font-size: 14px;
-}
-.lyrae-footerlinks span{
-  padding: 0 10px;
-  opacity:.55;
-}
 
-.lyrae-page-title{
-  margin: 26px 0 6px 0;
-  font-size: 28px;
-  font-weight: 780;
-  color: var(--g900);
-}
+.lyrae-cta-wrap{ display:flex; align-items:center; justify-content:center; margin-top:18px; }
+.lyrae-disclaimer{ margin-top:18px; color:#6d7a79; font-size:14px; }
+
+.lyrae-page-title{ margin: 26px 0 6px 0; font-size: 28px; font-weight: 780; color: var(--g900); }
+
 .lyrae-card{
   background: var(--card);
   border: 1px solid rgba(14,59,53,.12);
@@ -240,12 +254,7 @@ div[data-testid="stNumberInput"] label {
   box-shadow: var(--shadow-soft);
   padding: 18px 18px 10px 18px;
 }
-.lyrae-card h3{
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--g900);
-}
+.lyrae-card h3{ margin:0 0 10px 0; font-size:18px; font-weight:800; color: var(--g900); }
 
 .stButton > button, .stDownloadButton > button{
   border-radius: 12px !important;
@@ -268,6 +277,13 @@ div[data-testid="stNumberInput"] label {
   box-shadow: 0 10px 22px rgba(0,0,0,.12);
   border: 1px solid rgba(255,255,255,.28);
 }
+.lyrae-result small{
+  display:block;
+  margin-top:8px;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: .92;
+}
 .lyrae-scale{
   margin-top: 14px;
   border-radius: 16px;
@@ -286,13 +302,34 @@ div[data-testid="stNumberInput"] label {
   box-shadow: 0 6px 16px rgba(0,0,0,.18);
   transform: translateX(-50%);
 }
+.lyrae-mini-pill{
+  display:inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(14,59,53,.08);
+  border: 1px solid rgba(14,59,53,.14);
+  color: rgba(14,59,53,.92);
+  font-weight: 780;
+  font-size: 12px;
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+
 # ============================================================
-# Helpers
+# HELPERS (généraux)
 # ============================================================
+def normalize_key(s: str) -> str:
+    """Normalise pour gérer accents / variations (ex: vegetalisé vs vegetalise)."""
+    if s is None:
+        return ""
+    s = str(s).strip()
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = s.replace(" ", "_")
+    return s
+
+
 def load_meta(meta_path: Path) -> dict:
     with meta_path.open("r", encoding="utf-8") as f:
         meta = json.load(f)
@@ -300,6 +337,7 @@ def load_meta(meta_path: Path) -> dict:
         if k not in meta:
             raise ValueError(f"meta.json invalide: clé manquante '{k}'")
     return meta
+
 
 @st.cache_resource
 def load_model_and_meta(model_path_str: str, meta_path_str: str):
@@ -323,24 +361,23 @@ def load_model_and_meta(model_path_str: str, meta_path_str: str):
     cat_idx = [feature_cols.index(c) for c in cat_cols if c in feature_cols]
     return model, meta, feature_cols, cat_cols, factor_levels, cat_idx
 
+
 @st.cache_data(show_spinner=False)
 def load_xlsx_columns(url: str, sheet=0) -> list[str]:
-    """
-    Télécharge le XLSX de référence et retourne la liste des colonnes (1ère ligne).
-    """
+    """Télécharge le XLSX de référence et retourne la liste des colonnes."""
     try:
-        headers = {"User-Agent": "LYRAE-Streamlit/1.0 (contact: quentin@TODO)"}  # mets un vrai contact
-        r = requests.get(url, headers=headers, timeout=20)
+        headers = {"User-Agent": f"LYRAE-Streamlit/1.0 ({CONTACT_EMAIL})"}
+        r = requests.get(url, headers=headers, timeout=25)
         r.raise_for_status()
         bio = io.BytesIO(r.content)
         df = pd.read_excel(bio, sheet_name=sheet, engine="openpyxl")
-        cols = [str(c).strip() for c in df.columns]
-        return cols
+        return [str(c).strip() for c in df.columns]
     except Exception as e:
         return [f"__ERROR__:{type(e).__name__}:{e}"]
 
+
 def yn_to_num_if_needed(val, col_is_numeric: bool):
-    if val is None:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
         return val
     if pd.isna(val):
         return val
@@ -355,8 +392,10 @@ def yn_to_num_if_needed(val, col_is_numeric: bool):
         return 0.0
     return val
 
+
 def build_template(feature_cols):
     return pd.DataFrame([{c: pd.NA for c in feature_cols}])
+
 
 def apply_inputs_to_template(X, inputs: dict):
     for k, v in inputs.items():
@@ -364,9 +403,15 @@ def apply_inputs_to_template(X, inputs: dict):
             X.at[0, k] = v
     return X
 
+
 def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
+    """
+    Si colonnes *_missing_code :
+    - init à 0
+    - si variable manquante : 2 si variable d'analyse, sinon 1
+    """
     miss_cols = [c for c in X.columns if c.endswith("_missing_code")]
-    if len(miss_cols) == 0:
+    if not miss_cols:
         return X
     for mc in miss_cols:
         X.at[0, mc] = 0
@@ -378,13 +423,16 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
             X.at[0, mc] = 2 if base in analysis_cols_set else 1
     return X
 
+
 def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list, factor_levels: dict):
+    # catégorielles
     for c in cat_cols:
         if c in X.columns:
             lv = factor_levels.get(c, None)
             X[c] = X[c].astype("string")
             X[c] = pd.Categorical(X[c], categories=lv) if lv is not None else pd.Categorical(X[c])
 
+    # numériques
     num_cols = [c for c in feature_cols if c not in cat_cols]
     for c in num_cols:
         if c not in X.columns:
@@ -392,6 +440,7 @@ def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list
         X[c] = X[c].apply(lambda v: yn_to_num_if_needed(v, col_is_numeric=True))
         X[c] = pd.to_numeric(X[c], errors="coerce")
     return X
+
 
 def cat_from_p_like_R(p: float) -> str:
     if p < 0.25:
@@ -402,6 +451,7 @@ def cat_from_p_like_R(p: float) -> str:
         return "Lyme probable"
     return "Lyme sûr"
 
+
 def cat_color(cat: str) -> str:
     if cat.startswith("Pas de Lyme"):
         return "linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%)"
@@ -411,8 +461,9 @@ def cat_color(cat: str) -> str:
         return "linear-gradient(180deg, #ef6c00 0%, #e65100 100%)"
     return "linear-gradient(180deg, #c62828 0%, #8e0000 100%)"
 
+
 # ============================================================
-# ✅ Risque auto via raster (1/2/3) à partir de la localisation
+# RISQUE AUTO via raster
 # ============================================================
 @st.cache_data(show_spinner=False)
 def download_risk_raster(url: str) -> str:
@@ -424,40 +475,36 @@ def download_risk_raster(url: str) -> str:
     if p.exists() and p.stat().st_size > 0:
         return local_path
 
-    headers = {"User-Agent": "LYRAE-Streamlit/1.0 (contact: quentin@TODO)"}  # mets un vrai contact
-    r = requests.get(url, headers=headers, timeout=60)
+    headers = {"User-Agent": f"LYRAE-Streamlit/1.0 ({CONTACT_EMAIL})"}
+    r = requests.get(url, headers=headers, timeout=90)
     r.raise_for_status()
     p.write_bytes(r.content)
     return local_path
 
+
 def _best_match_risk_label(target: str, levels: list[str]) -> str:
-    """
-    Essaye d'aligner le libellé avec les levels attendus par le modèle.
-    """
     if not levels:
         return target
     t = target.strip().lower()
 
-    # match direct insensible à la casse
     for lv in levels:
         if str(lv).strip().lower() == t:
             return str(lv)
 
-    # match par mots-clés
     def pick(keyword):
         for lv in levels:
             if keyword in str(lv).strip().lower():
                 return str(lv)
         return None
 
-    if "faible" in t or "méconnu" in t or "meconnu" in t:
-        return pick("faible") or pick("méconnu") or pick("meconnu") or target
+    if "faible" in t or "meconnu" in t or "méconnu" in t:
+        return pick("faible") or pick("meconnu") or pick("méconnu") or target
     if "inter" in t:
         return pick("inter") or target
     if "fort" in t:
         return pick("fort") or target
-
     return target
+
 
 def risk_class_from_geo(lat_wgs84: float, lon_wgs84: float, factor_levels: dict) -> str | None:
     """
@@ -471,11 +518,10 @@ def risk_class_from_geo(lat_wgs84: float, lon_wgs84: float, factor_levels: dict)
             if ds_crs is None:
                 return None
 
-            # reproj WGS84 -> CRS raster
             transformer = Transformer.from_crs("EPSG:4326", ds_crs, always_xy=True)
             x, y = transformer.transform(lon_wgs84, lat_wgs84)
 
-            # hors emprise ?
+            # hors emprise
             if (x < ds.bounds.left) or (x > ds.bounds.right) or (y < ds.bounds.bottom) or (y > ds.bounds.top):
                 raw_label = "faible ou méconnu"
             else:
@@ -500,24 +546,25 @@ def risk_class_from_geo(lat_wgs84: float, lon_wgs84: float, factor_levels: dict)
                         else:
                             raw_label = "faible ou méconnu"
 
-        # aligner avec les levels attendus si la variable est catégorielle
         lv = factor_levels.get("Classe_de_risque", [])
         return _best_match_risk_label(raw_label, [str(x) for x in lv]) if lv else raw_label
-
     except Exception:
         return None
 
+
 # ============================================================
-# Geocode + MAP (Leaflet) — carte nette
+# GEOCODE + MAP (Leaflet)
 # ============================================================
 @st.cache_data(show_spinner=False)
 def geocode_address(address: str):
     if not address or address.strip() == "":
         return None
+
+    # ⚠️ Nominatim: respecter les limites (cache + pas de spam)
     url = f"https://nominatim.openstreetmap.org/search?format=json&limit=1&q={quote_plus(address)}"
-    headers = {"User-Agent": "LYRAE-Streamlit/1.0 (contact: none)"}
+    headers = {"User-Agent": f"LYRAE-Streamlit/1.0 ({CONTACT_EMAIL})"}
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=12)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -529,6 +576,7 @@ def geocode_address(address: str):
         return {"lat": lat, "lon": lon, "display_name": disp}
     except Exception:
         return None
+
 
 def render_map(lat: float, lon: float, zoom: int = 14):
     map_id = f"map_{abs(hash((round(lat,6), round(lon,6), int(zoom))))}"
@@ -577,16 +625,24 @@ def render_map(lat: float, lon: float, zoom: int = 14):
             attribution: '&copy; OpenStreetMap contributors'
           }}).addTo(map);
 
-          const marker = L.marker([{lat}, {lon}]).addTo(map);
+          L.marker([{lat}, {lon}]).addTo(map);
         </script>
       </body>
     </html>
     """
     components.html(html, height=440)
 
+
 # ============================================================
-# Topbar
+# TOPBAR + NAV
 # ============================================================
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+def goto(page: str):
+    st.session_state["page"] = page
+    st.rerun()
+
 st.markdown(
     f"""
     <div class="lyrae-topbar">
@@ -597,15 +653,48 @@ st.markdown(
           </div>
           <span>{APP_BRAND}</span>
         </div>
-        <div></div>
+        <div class="lyrae-navbtns">
+          <a class="lyrae-navbtn" href="#" onclick="window.parent.postMessage({{type:'streamlit:navigate',page:'home'}}, '*'); return false;">Accueil</a>
+          <a class="lyrae-navbtn" href="#" onclick="window.parent.postMessage({{type:'streamlit:navigate',page:'eval'}}, '*'); return false;">Évaluation</a>
+          <a class="lyrae-navbtn" href="#" onclick="window.parent.postMessage({{type:'streamlit:navigate',page:'methodo'}}, '*'); return false;">Méthodologie</a>
+          <a class="lyrae-navbtn" href="#" onclick="window.parent.postMessage({{type:'streamlit:navigate',page:'sources'}}, '*'); return false;">Sources</a>
+          <a class="lyrae-navbtn" href="#" onclick="window.parent.postMessage({{type:'streamlit:navigate',page:'project'}}, '*'); return false;">RESOLVE</a>
+        </div>
       </div>
     </div>
+    <script>
+      window.addEventListener("message", (event) => {{
+        if(event.data && event.data.type === "streamlit:navigate") {{
+          const page = event.data.page;
+          const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+        }}
+      }});
+    </script>
     """,
     unsafe_allow_html=True
 )
 
+# Navigation réelle (Streamlit) : boutons discrets (fiable)
+nav_cols = st.columns([1,1,1,1,1])
+with nav_cols[0]:
+    if st.button("🏠 Accueil", use_container_width=True):
+        goto("home")
+with nav_cols[1]:
+    if st.button("🩺 Évaluation", use_container_width=True):
+        goto("eval")
+with nav_cols[2]:
+    if st.button("📐 Méthodologie", use_container_width=True):
+        goto("methodo")
+with nav_cols[3]:
+    if st.button("📚 Sources", use_container_width=True):
+        goto("sources")
+with nav_cols[4]:
+    if st.button("🧩 RESOLVE", use_container_width=True):
+        goto("project")
+
+
 # ============================================================
-# Sidebar: chemins
+# SIDEBAR: chemins + contrôles
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Configuration")
@@ -614,8 +703,16 @@ with st.sidebar:
     model_path = st.text_input("Chemin modèle .cbm", value=default_model)
     meta_path  = st.text_input("Chemin meta .json", value=default_meta)
 
+    st.caption("Astuce : place le modèle et le meta dans le même dossier que ce app.py.")
+
+    if st.button("🔄 Reset (session)", use_container_width=True):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.rerun()
+
+
 # ============================================================
-# Load model + meta
+# LOAD MODEL + META
 # ============================================================
 try:
     model, meta, feature_cols, cat_cols, factor_levels, cat_idx = load_model_and_meta(model_path, meta_path)
@@ -623,8 +720,9 @@ except Exception as e:
     st.error(f"Impossible de charger modèle/meta: {e}")
     st.stop()
 
+
 # ============================================================
-# Vérification colonnes vs XLSX de référence
+# Vérification colonnes vs XLSX
 # ============================================================
 xlsx_cols = load_xlsx_columns(REF_XLSX_URL, sheet=REF_XLSX_SHEET)
 
@@ -652,21 +750,13 @@ with st.sidebar:
                     st.write("**Dans feature_cols mais pas dans XLSX :**")
                     st.code("\n".join(extra_in_model))
 
+
 analysis_cols_set = set(analysis_cols)
 results_analysis_set = set([c for c in RESULTS_ANALYSIS_COLS if c in feature_cols])
 
-# ============================================================
-# Navigation
-# ============================================================
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
-
-def goto(page: str):
-    st.session_state["page"] = page
-    st.rerun()
 
 # ============================================================
-# Questions
+# QUESTIONS (labels)
 # ============================================================
 QUESTION = {
     "Age_du_cheval": "Quel est l’âge du cheval (années) ?",
@@ -674,9 +764,10 @@ QUESTION = {
     "Type_de_cheval": "Quel est le type de cheval ?",
     "Season": "Quelle est la saison au moment de la consultation ?",
 
-    # ✅ SUPPRIMÉ : "Quel est le niveau de risque?" (rempli automatiquement via raster)
+    # Classe_de_risque : auto via raster
 
     "Exterieur_vegetalisé": "Le cheval a-t-il accès à un extérieur végétalisé ?",
+    "Exterieur_vegetalise": "Le cheval a-t-il accès à un extérieur végétalisé ?",
     "Freq_acces_exterieur_sem": "Combien de sorties par semaine (accès extérieur) ?",
     "Tiques_semaines_précédentes": "Des tiques ont-elles été observées ces dernières semaines ?",
 
@@ -744,19 +835,22 @@ QUESTION = {
 
 YES_NO_OPTS = ["Oui", "Non"]
 
+
 def has(col):
     return col in feature_cols
+
 
 def question_label(col: str) -> str:
     return QUESTION.get(col, col)
 
-def input_widget(col: str, key: str):
-    if not has(col):
+
+def input_widget(col: str, key: str, factor_levels: dict, cat_cols: list, feature_cols: list):
+    if col not in feature_cols:
         return None
 
     label = question_label(col)
 
-    # Season: forcer l'ordre des saisons
+    # Season : forcer l'ordre
     if col == "Season":
         season_order = ["printemps", "été", "automne", "hiver"]
         lv_meta = [str(x) for x in factor_levels.get(col, [])] if col in cat_cols else []
@@ -775,11 +869,13 @@ def input_widget(col: str, key: str):
         v = st.number_input(label, min_value=0, max_value=7, step=1, value=None, key=key)
         return pd.NA if v is None else v
 
+    # cat
     if col in cat_cols:
         lv = factor_levels.get(col, [])
         choice = st.selectbox(label, options=[str(x) for x in lv], index=None, placeholder="Sélectionner…", key=key)
         return pd.NA if choice is None else choice
 
+    # bin-like
     bin_like = (
         col.endswith(("_neg", "_normal", "_normale")) or
         col.startswith(("ELISA", "WB", "PCR", "SNAP", "IFAT")) or
@@ -801,10 +897,14 @@ def input_widget(col: str, key: str):
     raw = st.text_input(label, value="", placeholder="Laisser vide si inconnu", key=key)
     return pd.NA if raw.strip() == "" else raw.strip()
 
+
 # ============================================================
-# HOME
+# PAGES
 # ============================================================
-if st.session_state["page"] == "home":
+page = st.session_state.get("page", "home")
+
+# ---------- HOME ----------
+if page == "home":
     st.markdown(
         f"""
         <div class="lyrae-hero">
@@ -833,36 +933,131 @@ if st.session_state["page"] == "home":
         """
         <div class="lyrae-disclaimer">
           Cet outil est une aide à la décision, non un dispositif médical autonome.
-        </div>
-        <div class="lyrae-footerlinks">
-          <a href="#" style="color:#6d7a79; text-decoration:underline;">Méthodologie</a>
-          <span>|</span>
-          <a href="#" style="color:#6d7a79; text-decoration:underline;">Sources scientifiques</a>
-          <span>|</span>
-          <a href="#" style="color:#6d7a79; text-decoration:underline;">Projet RESOLVE</a>
+          Il ne remplace ni l’examen clinique ni le jugement du vétérinaire.
         </div>
         """,
         unsafe_allow_html=True
     )
     st.stop()
 
+
+# ---------- METHODO ----------
+if page == "methodo":
+    st.markdown(f"<div class='lyrae-page-title'>Méthodologie</div>", unsafe_allow_html=True)
+    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <h3>Principe général</h3>
+        <p>
+        LYRAE applique un modèle de machine learning (CatBoost) entraîné sur un jeu de données structuré
+        (variables cliniques, biologiques, contexte d’exposition). La sortie est une probabilité de Lyme,
+        traduite en 4 catégories d’aide à la décision.
+        </p>
+
+        <h3>Catégories</h3>
+        <ul>
+          <li><b>&lt; 0.25</b> : Pas de Lyme / informations insuffisantes</li>
+          <li><b>0.25–0.50</b> : Lyme possible</li>
+          <li><b>0.50–0.75</b> : Lyme probable</li>
+          <li><b>&ge; 0.75</b> : Lyme sûr</li>
+        </ul>
+
+        <h3>Risque géographique</h3>
+        <p>
+        Si la variable <code>Classe_de_risque</code> existe dans le modèle, elle est remplie automatiquement
+        à partir d’un raster (3 classes) en fonction de la localisation du cheval.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+
+# ---------- SOURCES ----------
+if page == "sources":
+    st.markdown(f"<div class='lyrae-page-title'>Sources scientifiques</div>", unsafe_allow_html=True)
+    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <h3>À compléter</h3>
+        <p>
+        Ajoute ici les références (articles, guidelines, consensus) utilisées pour construire les variables,
+        les critères d’inclusion et l’interprétation des tests.
+        </p>
+        <p class="lyrae-mini-pill">Conseil : liste en format APA + DOI</p>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+
+# ---------- PROJECT ----------
+if page == "project":
+    st.markdown(f"<div class='lyrae-page-title'>Projet RESOLVE</div>", unsafe_allow_html=True)
+    st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <h3>Contexte</h3>
+        <p>
+        Page projet : objectifs, partenaires, modalités de collecte, contact, etc.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+
 # ============================================================
 # EVALUATION
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
+
+# session defaults
+st.session_state.setdefault("geo", None)
+st.session_state.setdefault("risk_class", None)
+st.session_state.setdefault("horse_name", "CHEVAL_1")
+st.session_state.setdefault("addr_num", "")
+st.session_state.setdefault("addr_street", "")
+st.session_state.setdefault("addr_city", "")
+st.session_state.setdefault("addr_cp", "")
+st.session_state.setdefault("last_result", None)  # stockage résultat pour export
 
 top_left, top_right = st.columns([1.2, 0.8])
 with top_left:
     if st.button("⬅ Retour accueil"):
         goto("home")
 with top_right:
-    st.caption("")
+    if st.button("🧹 Réinitialiser le formulaire", use_container_width=True):
+        # garde modèle/meta, reset inputs
+        for k in ["geo","risk_class","horse_name","addr_num","addr_street","addr_city","addr_cp","last_result"]:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun()
 
 tab_identity, tab_context, tab_exclusion, tab_signs, tab_results = st.tabs([
     "Identité", "Contexte & exposition", "Diagnostic d'exclusion", "Signes cliniques", "Résultats d'analyse"
 ])
 
-inputs = {}
+inputs: dict = {}
+
+# Aliases (pour variations d'accents / noms proches)
+ALIASES = {}
+# Exemple : si ton modèle utilise Exterieur_vegetalisé mais l’UI a Exterieur_vegetalise (ou inversement)
+if has("Exterieur_vegetalisé") and not has("Exterieur_vegetalise"):
+    ALIASES["Exterieur_vegetalise"] = "Exterieur_vegetalisé"
+if has("Exterieur_vegetalise") and not has("Exterieur_vegetalisé"):
+    ALIASES["Exterieur_vegetalisé"] = "Exterieur_vegetalise"
+
+def put(col: str, value):
+    """Ecrit dans inputs en respectant alias si besoin."""
+    if col in feature_cols:
+        inputs[col] = value
+    elif col in ALIASES and ALIASES[col] in feature_cols:
+        inputs[ALIASES[col]] = value
+
 
 with tab_identity:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -871,27 +1066,28 @@ with tab_identity:
     c1, c2 = st.columns(2)
     with c1:
         horse_name = st.text_input("Nom du cheval", value=st.session_state.get("horse_name", "CHEVAL_1"), placeholder="Ex: TAGADA")
+        st.session_state["horse_name"] = horse_name
     with c2:
         st.caption("")
-    st.session_state["horse_name"] = horse_name
 
     c3, c4 = st.columns(2)
     with c3:
         if has("Age_du_cheval"):
-            inputs["Age_du_cheval"] = input_widget("Age_du_cheval", key="id_Age_du_cheval")
+            put("Age_du_cheval", input_widget("Age_du_cheval", key="id_Age_du_cheval", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with c4:
         if has("Type_de_cheval"):
-            inputs["Type_de_cheval"] = input_widget("Type_de_cheval", key="id_Type_de_cheval")
+            put("Type_de_cheval", input_widget("Type_de_cheval", key="id_Type_de_cheval", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     c5, c6 = st.columns(2)
     with c5:
         if has("Season"):
-            inputs["Season"] = input_widget("Season", key="id_Season")
+            put("Season", input_widget("Season", key="id_Season", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with c6:
         if has("Sexe"):
-            inputs["Sexe"] = input_widget("Sexe", key="id_Sexe")
+            put("Sexe", input_widget("Sexe", key="id_Sexe", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 with tab_context:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -901,46 +1097,58 @@ with tab_context:
 
     with left:
         if has("Tiques_semaines_précédentes"):
-            inputs["Tiques_semaines_précédentes"] = input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes")
+            put("Tiques_semaines_précédentes", input_widget("Tiques_semaines_précédentes", key="ctx_Tiques_semaines_précédentes", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     with right:
-        if has("Exterieur_vegetalisé"):
-            inputs["Exterieur_vegetalisé"] = input_widget("Exterieur_vegetalisé", key="ctx_Exterieur_vegetalisé")
+        # extérieur végétalisé (alias géré)
+        if has("Exterieur_vegetalisé") or has("Exterieur_vegetalise"):
+            col_ui = "Exterieur_vegetalisé" if has("Exterieur_vegetalisé") else "Exterieur_vegetalise"
+            put(col_ui, input_widget(col_ui, key="ctx_Exterieur_vegetalise", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
         if has("Freq_acces_exterieur_sem"):
-            inputs["Freq_acces_exterieur_sem"] = input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem")
+            put("Freq_acces_exterieur_sem", input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     st.markdown("---")
     st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
 
     a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
     with a1:
-        num = st.text_input("Numéro", value=st.session_state.get("addr_num", ""), placeholder="N°", key="addr_num")
+        st.session_state["addr_num"] = st.text_input("Numéro", value=st.session_state.get("addr_num", ""), placeholder="N°", key="addr_num")
     with a2:
-        street = st.text_input("Rue", value=st.session_state.get("addr_street", ""), placeholder="Rue / voie", key="addr_street")
+        st.session_state["addr_street"] = st.text_input("Rue", value=st.session_state.get("addr_street", ""), placeholder="Rue / voie", key="addr_street")
     with a3:
-        city = st.text_input("Ville", value=st.session_state.get("addr_city", ""), placeholder="Ville", key="addr_city")
+        st.session_state["addr_city"] = st.text_input("Ville", value=st.session_state.get("addr_city", ""), placeholder="Ville", key="addr_city")
     with a4:
-        cp = st.text_input("Code postal", value=st.session_state.get("addr_cp", ""), placeholder="CP", key="addr_cp")
+        st.session_state["addr_cp"] = st.text_input("Code postal", value=st.session_state.get("addr_cp", ""), placeholder="CP", key="addr_cp")
 
-    locate_col, _ = st.columns([0.34, 0.66])
+    locate_col, info_col = st.columns([0.34, 0.66])
     with locate_col:
         do_locate = st.button("Localiser sur la carte", use_container_width=True)
-
-    if "geo" not in st.session_state:
-        st.session_state["geo"] = None
-
-    # ✅ (AJOUT) stockage du niveau de risque calculé
-    if "risk_class" not in st.session_state:
-        st.session_state["risk_class"] = None
+    with info_col:
+        geo = st.session_state.get("geo", None)
+        risk = st.session_state.get("risk_class", None)
+        if geo is not None:
+            st.caption(f"📍 {geo.get('display_name','')}")
+        if risk is not None:
+            st.caption(f"🧭 Risque estimé : **{risk}**")
 
     if do_locate:
-        full_address = " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip()
+        full_address = " ".join([
+            str(st.session_state.get("addr_num","")).strip(),
+            str(st.session_state.get("addr_street","")).strip(),
+            str(st.session_state.get("addr_cp","")).strip(),
+            str(st.session_state.get("addr_city","")).strip()
+        ]).strip()
+
         if full_address == "":
             st.session_state["geo"] = None
             st.session_state["risk_class"] = None
         else:
             st.session_state["geo"] = geocode_address(full_address)
             geo_tmp = st.session_state.get("geo", None)
+
+            # petite pause pour éviter d'enchaîner si l'utilisateur spam
+            time.sleep(0.15)
+
             if geo_tmp is not None:
                 st.session_state["risk_class"] = risk_class_from_geo(
                     lat_wgs84=geo_tmp["lat"],
@@ -958,6 +1166,7 @@ with tab_context:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Diagnostic d'exclusion</h3>", unsafe_allow_html=True)
@@ -965,18 +1174,15 @@ with tab_exclusion:
     col1, col2 = st.columns(2)
     with col1:
         if has("Examen_clinique"):
-            inputs["Examen_clinique"] = input_widget("Examen_clinique", key="excl_Examen_clinique")
+            put("Examen_clinique", input_widget("Examen_clinique", key="excl_Examen_clinique", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col2:
         st.caption("")
 
     col3, col4 = st.columns(2)
     with col3:
-        if has("piroplasmose_neg"):
-            inputs["piroplasmose_neg"] = input_widget("piroplasmose_neg", key="excl_piroplasmose_neg")
-        if has("ehrlichiose_neg"):
-            inputs["ehrlichiose_neg"] = input_widget("ehrlichiose_neg", key="excl_ehrlichiose_neg")
-        if has("ehrlichiose_negatif"):
-            inputs["ehrlichiose_negatif"] = input_widget("ehrlichiose_negatif", key="excl_ehrlichiose_negatif")
+        for c in ["piroplasmose_neg", "ehrlichiose_neg", "ehrlichiose_negatif"]:
+            if has(c):
+                put(c, input_widget(c, key=f"excl_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col4:
         st.caption("")
 
@@ -984,13 +1190,14 @@ with tab_exclusion:
     with col5:
         for c in ["Bilan_sanguin_normal","NFS_normale","SAA_normal","Fibrinogène_normal"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"excl_{c}")
+                put(c, input_widget(c, key=f"excl_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col6:
         for c in ["Parametres_musculaires_normaux","Parametres_renaux_normaux","Parametres_hepatiques_normaux"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"excl_{c}")
+                put(c, input_widget(c, key=f"excl_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 with tab_signs:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -1000,36 +1207,38 @@ with tab_signs:
     with col1:
         for c in ["Abattement","Mauvaise_performance"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sg_{c}")
+                put(c, input_widget(c, key=f"sg_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col2:
         for c in ["Douleurs_diffuses","Boiterie"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sg_{c}")
+                put(c, input_widget(c, key=f"sg_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     col3, col4 = st.columns(2)
     with col3:
         for c in ["Meningite","Radiculonevrite","Troubles_de_la_demarche"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sn_{c}")
+                put(c, input_widget(c, key=f"sn_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col4:
         for c in ["Dysphagie","Fasciculations_musculaires"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sn_{c}")
+                put(c, input_widget(c, key=f"sn_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     col5, col6 = st.columns(2)
     with col5:
         for c in ["Uveite_bilaterale","Cecite_avec_cause_inflammatoire","Synechies"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"so_{c}")
+                put(c, input_widget(c, key=f"so_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col6:
         for c in ["Atrophie","Dyscories","Myosis"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"so_{c}")
+                put(c, input_widget(c, key=f"so_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     col7, col8 = st.columns(2)
     with col7:
         if has("Synovite_avec_epanchement_articulaire"):
-            inputs["Synovite_avec_epanchement_articulaire"] = input_widget("Synovite_avec_epanchement_articulaire", key="sa_Synovite_avec_epanchement_articulaire")
+            put("Synovite_avec_epanchement_articulaire",
+                input_widget("Synovite_avec_epanchement_articulaire", key="sa_Synovite_avec_epanchement_articulaire",
+                             factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col8:
         st.caption("")
 
@@ -1037,24 +1246,30 @@ with tab_signs:
     with col9:
         for c in ["Pseudolyphome_cutane","Pododermatite"]:
             if has(c):
-                inputs[c] = input_widget(c, key=f"sc_{c}")
+                put(c, input_widget(c, key=f"sc_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
     with col10:
         st.caption("")
 
+    # champs restants (hors résultats + hors missing_code)
+    already = set(inputs.keys())
     extra_candidates = [
         c for c in feature_cols
-        if c not in inputs
+        if c not in already
         and not c.endswith("_missing_code")
         and c not in results_analysis_set
+        and c != "Classe_de_risque"
     ]
-    if len(extra_candidates) > 0:
+    if extra_candidates:
+        st.markdown("---")
+        st.markdown("<h3>Autres variables disponibles (modèle)</h3>", unsafe_allow_html=True)
         colA, colB = st.columns(2)
         for i, c in enumerate(extra_candidates):
             target = colA if i % 2 == 0 else colB
             with target:
-                inputs[c] = input_widget(c, key=f"extra_{c}")
+                put(c, input_widget(c, key=f"extra_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 with tab_results:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -1064,7 +1279,7 @@ with tab_results:
     for i, c in enumerate([c for c in RESULTS_ANALYSIS_COLS if has(c)]):
         target = cols_left if i % 2 == 0 else cols_right
         with target:
-            inputs[c] = input_widget(c, key=f"res_{c}")
+            put(c, input_widget(c, key=f"res_{c}", factor_levels=factor_levels, cat_cols=cat_cols, feature_cols=feature_cols))
 
     st.markdown("---")
     submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
@@ -1073,7 +1288,7 @@ with tab_results:
         with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
             time.sleep(0.25)
 
-            # ✅ (AJOUT) remplir Classe_de_risque automatiquement si la colonne existe
+            # auto-risk si colonne existe
             if has("Classe_de_risque"):
                 auto_risk = st.session_state.get("risk_class", None)
                 inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
@@ -1081,12 +1296,22 @@ with tab_results:
             X = build_template(feature_cols)
             X = apply_inputs_to_template(X, inputs)
 
-            X = fill_missing_code_like_R(X, set(analysis_cols))
+            X = fill_missing_code_like_R(X, analysis_cols_set)
             X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
             pool_one = Pool(X, cat_features=cat_idx)
             p_one = float(model.predict_proba(pool_one)[:, 1][0])
             cat = cat_from_p_like_R(p_one)
+
+            # stocker résultat pour export
+            st.session_state["last_result"] = {
+                "horse_name": st.session_state.get("horse_name", "CHEVAL_1"),
+                "probability": p_one,
+                "category": cat,
+                "inputs": {k: (None if pd.isna(v) else v) for k, v in inputs.items()},
+                "geo": st.session_state.get("geo", None),
+                "risk_class": st.session_state.get("risk_class", None),
+            }
 
         marker_left = int(max(0, min(100, round(p_one * 100))))
 
@@ -1094,12 +1319,67 @@ with tab_results:
             f"""
             <div class="lyrae-result" style="background:{cat_color(cat)};">
               {cat}
+              <small>Probabilité estimée : <b>{p_one:.3f}</b> (≈ {marker_left}%)</small>
               <div class="lyrae-scale">
                 <div class="lyrae-marker" style="left:{marker_left}%;"></div>
               </div>
             </div>
             """,
             unsafe_allow_html=True
+        )
+
+        # petit résumé : variables manquantes
+        missing_feats = []
+        for c in feature_cols:
+            if c.endswith("_missing_code"):
+                continue
+            if pd.isna(X.at[0, c]):
+                missing_feats.append(c)
+        with st.expander("🔎 Détails (valeurs manquantes / aperçu des features)"):
+            st.write(f"Variables manquantes (sur {len(feature_cols)} features): **{len(missing_feats)}**")
+            if missing_feats:
+                st.code("\n".join(missing_feats[:200]))
+                if len(missing_feats) > 200:
+                    st.caption(f"... +{len(missing_feats)-200} autres")
+            st.dataframe(X, use_container_width=True)
+
+    # Export du dernier résultat
+    last = st.session_state.get("last_result", None)
+    if last is not None:
+        st.markdown("---")
+        st.markdown("<h3>Exporter le cas</h3>", unsafe_allow_html=True)
+
+        # JSON
+        json_bytes = json.dumps(last, ensure_ascii=False, indent=2).encode("utf-8")
+        st.download_button(
+            "⬇️ Télécharger JSON (cas + résultat)",
+            data=json_bytes,
+            file_name=f"lyrae_{normalize_key(last.get('horse_name','CHEVAL'))}_case.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+        # CSV : une ligne
+        flat = {}
+        flat["horse_name"] = last.get("horse_name")
+        flat["probability"] = last.get("probability")
+        flat["category"] = last.get("category")
+        flat["risk_class"] = last.get("risk_class")
+        geo = last.get("geo") or {}
+        flat["geo_lat"] = geo.get("lat")
+        flat["geo_lon"] = geo.get("lon")
+        flat["geo_display_name"] = geo.get("display_name")
+        for k, v in (last.get("inputs") or {}).items():
+            flat[k] = v
+        df_out = pd.DataFrame([flat])
+        csv_bytes = df_out.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "⬇️ Télécharger CSV (1 ligne)",
+            data=csv_bytes,
+            file_name=f"lyrae_{normalize_key(last.get('horse_name','CHEVAL'))}_case.csv",
+            mime="text/csv",
+            use_container_width=True
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
