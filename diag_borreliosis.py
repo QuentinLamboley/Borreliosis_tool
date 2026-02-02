@@ -1276,7 +1276,6 @@ with tab_signs:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 with tab_results:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
     st.markdown("<h3>Résultats d'analyse</h3>", unsafe_allow_html=True)
@@ -1288,57 +1287,69 @@ with tab_results:
             put(c, input_widget(c, key=f"res_{c}"))
 
     st.markdown("---")
-    # ============================================================
-# Résultats d'analyse (EXTRAIT COMPLET CONCERNÉ : auto Classe_de_risque au submit)
-# ============================================================
-submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
+    submitted = st.button("Lancer l'aide au diagnostic 🐎", use_container_width=True)
 
-if submitted:
-    with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
-        time.sleep(0.25)
+    if submitted:
+        with st.spinner("🐎 Le cheval galope… Analyse en cours…"):
+            time.sleep(0.25)
 
-        # ✅ remplir Classe_de_risque automatiquement si la colonne existe
-        if has("Classe_de_risque"):
-            auto_risk = st.session_state.get("risk_class", None)
-            inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
+            # ✅ remplir Classe_de_risque automatiquement si la colonne existe
+            if has("Classe_de_risque"):
+                auto_risk = st.session_state.get("risk_class", None)
+                inputs["Classe_de_risque"] = pd.NA if (auto_risk is None or str(auto_risk).strip() == "") else auto_risk
 
-        X = build_template(feature_cols)
-        X = apply_inputs_to_template(X, inputs)
+            X = build_template(feature_cols)
+            X = apply_inputs_to_template(X, inputs)
 
-        X = fill_missing_code_like_R(X, set(analysis_cols))
-        X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
+            X = fill_missing_code_like_R(X, set(analysis_cols))
+            X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
-        pool_one = Pool(X, cat_features=cat_idx)
-        p_one = float(model.predict_proba(pool_one)[:, 1][0])
-        cat = cat_from_p_like_R(p_one)
+            pool_one = Pool(X, cat_features=cat_idx)
+            p_one = float(model.predict_proba(pool_one)[:, 1][0])
+            cat = cat_from_p_like_R(p_one)
 
-    marker_left = int(max(0, min(100, round(p_one * 100))))
+        # ✅ affichage résultat
+        marker_left = int(max(0, min(100, round(p_one * 100))))
+        st.markdown(
+            f"""
+            <div class="lyrae-result" style="background:{cat_color(cat)};">
+              {cat}
+              <small>Probabilité estimée : {p_one:.3f}</small>
+              <div class="lyrae-scale">
+                <div class="lyrae-marker" style="left:{marker_left}%;"></div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    st.markdown(
-        f"""
-        <div class="lyrae-result" style="background:{cat_color(cat)};">
-          {cat}
-          <div class="lyrae-scale">
-            <div class="lyrae-marker" style="left:{marker_left}%;"></div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        # ✅ détails: valeurs manquantes + aperçu X
         missing_feats = []
         for c in feature_cols:
             if c.endswith("_missing_code"):
                 continue
             if pd.isna(X.at[0, c]):
                 missing_feats.append(c)
+
         with st.expander("🔎 Détails (valeurs manquantes / aperçu des features)"):
             st.write(f"Variables manquantes (sur {len(feature_cols)} features): **{len(missing_feats)}**")
             if missing_feats:
                 st.code("\n".join(missing_feats[:200]))
                 if len(missing_feats) > 200:
-                    st.caption(f"... +{len(missing_feats)-200} autres")
+                    st.caption(f"... +{len(missing_feats) - 200} autres")
             st.dataframe(X, use_container_width=True)
 
+        # ✅ stocker le dernier résultat pour export
+        st.session_state["last_result"] = {
+            "horse_name": st.session_state.get("horse_name", "CHEVAL_1"),
+            "probability": p_one,
+            "category": cat,
+            "risk_class": st.session_state.get("risk_class", None),
+            "geo": st.session_state.get("geo", None),
+            "inputs": dict(inputs),
+        }
+
+    # ✅ exports (affichés uniquement si un résultat existe déjà)
     last = st.session_state.get("last_result", None)
     if last is not None:
         st.markdown("---")
@@ -1358,10 +1369,10 @@ if submitted:
         flat["probability"] = last.get("probability")
         flat["category"] = last.get("category")
         flat["risk_class"] = last.get("risk_class")
-        geo = last.get("geo") or {}
-        flat["geo_lat"] = geo.get("lat")
-        flat["geo_lon"] = geo.get("lon")
-        flat["geo_display_name"] = geo.get("display_name")
+        geo_last = last.get("geo") or {}
+        flat["geo_lat"] = geo_last.get("lat")
+        flat["geo_lon"] = geo_last.get("lon")
+        flat["geo_display_name"] = geo_last.get("display_name")
         for k, v in (last.get("inputs") or {}).items():
             flat[k] = v
 
@@ -1377,6 +1388,9 @@ if submitted:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+
 
 
 
