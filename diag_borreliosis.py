@@ -1082,99 +1082,85 @@ with tab_context:
             put("Freq_acces_exterieur_sem", input_widget("Freq_acces_exterieur_sem", key="ctx_Freq_acces_exterieur_sem"))
 
     # ============================================================
-# Contexte & exposition (EXTRAIT COMPLET CONCERNÉ : bloc "Localisation du cheval")
-# ============================================================
-st.markdown("---")
-st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
+    # Localisation du cheval (UNIQUEMENT dans l'onglet Contexte)
+    # ============================================================
+    st.markdown("---")
+    st.markdown("<h3 style='margin-top:6px;'>Localisation du cheval</h3>", unsafe_allow_html=True)
 
-a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
-with a1:
-    num = st.text_input(
-        "Numéro",
-        value=st.session_state.get("addr_num", ""),
-        placeholder="N°",
-        key="addr_num",
-    )
-with a2:
-    street = st.text_input(
-        "Rue",
-        value=st.session_state.get("addr_street", ""),
-        placeholder="Rue / voie",
-        key="addr_street",
-    )
-with a3:
-    city = st.text_input(
-        "Ville",
-        value=st.session_state.get("addr_city", ""),
-        placeholder="Ville",
-        key="addr_city",
-    )
-with a4:
-    cp = st.text_input(
-        "Code postal",
-        value=st.session_state.get("addr_cp", ""),
-        placeholder="CP",
-        key="addr_cp",
-    )
+    a1, a2, a3, a4 = st.columns([0.22, 0.78, 0.4, 0.4], gap="small")
+    with a1:
+        num = st.text_input(
+            "Numéro",
+            value=st.session_state.get("addr_num", ""),
+            placeholder="N°",
+            key="addr_num",
+        )
+    with a2:
+        street = st.text_input(
+            "Rue",
+            value=st.session_state.get("addr_street", ""),
+            placeholder="Rue / voie",
+            key="addr_street",
+        )
+    with a3:
+        city = st.text_input(
+            "Ville",
+            value=st.session_state.get("addr_city", ""),
+            placeholder="Ville",
+            key="addr_city",
+        )
+    with a4:
+        cp = st.text_input(
+            "Code postal",
+            value=st.session_state.get("addr_cp", ""),
+            placeholder="CP",
+            key="addr_cp",
+        )
 
-# ✅ bouton
-locate_col, _ = st.columns([0.34, 0.66])
-with locate_col:
-    do_locate = st.button("Localiser sur la carte", use_container_width=True)
+    locate_col, _ = st.columns([0.34, 0.66])
+    with locate_col:
+        do_locate = st.button("Localiser sur la carte", use_container_width=True)
 
-# ✅ session_state init
-if "geo" not in st.session_state:
-    st.session_state["geo"] = None
-if "risk_class" not in st.session_state:
-    st.session_state["risk_class"] = None
+    # ✅ action
+    if do_locate:
+        full_address = " ".join(
+            [str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]
+        ).strip()
 
-# ✅ action
-if do_locate:
-    full_address = " ".join(
-        [str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]
-    ).strip()
-
-    if full_address == "":
-        st.session_state["geo"] = None
-        st.session_state["risk_class"] = None
-        st.warning("Adresse incomplète — renseigne au minimum rue + ville (et idéalement le code postal).")
-    else:
-        geo_tmp = geocode_address(full_address)
-
-        # si ton geocode renvoie un dict d'erreur (ex: {"__error__": "...", "status": ...})
-        if isinstance(geo_tmp, dict) and geo_tmp.get("__error__"):
+        if full_address == "":
             st.session_state["geo"] = None
             st.session_state["risk_class"] = None
-            st.warning(f"Impossible de localiser l’adresse (HTTP {geo_tmp.get('status')}).")
-        elif geo_tmp is None:
-            st.session_state["geo"] = None
-            st.session_state["risk_class"] = None
-            st.warning("Adresse non trouvée. Essaye d’ajouter le code postal ou de simplifier l’adresse.")
+            st.warning("Adresse incomplète — renseigne au minimum rue + ville (et idéalement le code postal).")
         else:
-            st.session_state["geo"] = geo_tmp
+            geo_tmp = geocode_address(full_address)
 
-            # ✅ (AJOUT) calcul risque depuis raster
-            st.session_state["risk_class"] = risk_class_from_geo(
-                lat_wgs84=geo_tmp["lat"],
-                lon_wgs84=geo_tmp["lon"],
-                factor_levels=factor_levels,
-            )
+            if isinstance(geo_tmp, dict) and geo_tmp.get("__error__"):
+                st.session_state["geo"] = None
+                st.session_state["risk_class"] = None
+                st.warning(f"Impossible de localiser l’adresse (HTTP {geo_tmp.get('status')}).")
+            elif geo_tmp is None:
+                st.session_state["geo"] = None
+                st.session_state["risk_class"] = None
+                st.warning("Adresse non trouvée. Essaye d’ajouter le code postal ou de simplifier l’adresse.")
+            else:
+                st.session_state["geo"] = geo_tmp
+                st.session_state["risk_class"] = risk_class_from_geo(
+                    lat_wgs84=geo_tmp["lat"],
+                    lon_wgs84=geo_tmp["lon"],
+                    factor_levels=factor_levels,
+                )
+                rc = st.session_state["risk_class"] or "inconnu"
+                st.success(f"✅ Localisation effectuée — classe de risque : **{rc}**")
 
-            rc = st.session_state["risk_class"] or "inconnu"
-            st.success(f"✅ Localisation effectuée — classe de risque : **{rc}**")
+    # ✅ affichage carte
+    geo = st.session_state.get("geo", None)
+    if geo is not None:
+        render_map(geo["lat"], geo["lon"], zoom=14)
+    else:
+        render_map(46.603354, 1.888334, zoom=5)
 
-# ✅ affichage carte
-geo = st.session_state.get("geo", None)
-if geo is not None:
-    render_map(geo["lat"], geo["lon"], zoom=14)
-else:
-    render_map(46.603354, 1.888334, zoom=5)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# ✅ (OPTIONNEL) debug repliable (au lieu d'afficher geo brut en permanence)
-with st.expander("🔧 Debug localisation (Nominatim/BAN)", expanded=False):
-    st.write("Adresse envoyée :", " ".join([str(x).strip() for x in [num, street, cp, city] if str(x).strip() != ""]).strip())
-    st.write("geo (réponse) :", st.session_state.get("geo", None))
-    st.write("risk_class :", st.session_state.get("risk_class", None))
 
 with tab_exclusion:
     st.markdown("<div class='lyrae-card'>", unsafe_allow_html=True)
@@ -1388,6 +1374,7 @@ with tab_results:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
