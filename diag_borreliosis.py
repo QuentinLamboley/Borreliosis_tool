@@ -606,20 +606,46 @@ def fill_missing_code_like_R(X: pd.DataFrame, analysis_cols_set: set):
     return X
 
 
-def coerce_like_train_python(X: pd.DataFrame, feature_cols: list, cat_cols: list, factor_levels: dict):
+def coerce_like_train_python(
+    X: pd.DataFrame,
+    feature_cols: list,
+    cat_cols: list,
+    factor_levels: dict
+):
+    """
+    Rend X compatible CatBoost (Pool) :
+    - Cat features : toujours string, jamais pd.NA dans les catégories
+    - Numériques : float coerced
+    """
+    # --- Catégorielles : forcer en string + sentinel pour NA
     for c in cat_cols:
-        if c in X.columns:
-            lv = factor_levels.get(c, None)
-            X[c] = X[c].astype("string")
-            X[c] = pd.Categorical(X[c], categories=lv) if lv is not None else pd.Categorical(X[c])
+        if c not in X.columns:
+            continue
 
+        # On force en "string" pandas, puis on remplace les NA par un token
+        s = X[c].astype("string")
+        s = s.fillna("__MISSING__")
+
+        # Optionnel : si meta fournit des niveaux, on peut "aligner" sans casser
+        # (CatBoost accepte des strings hors niveaux, mais ça peut signaler une dérive)
+        lv = factor_levels.get(c, None)
+        if lv is not None and isinstance(lv, (list, tuple)) and len(lv) > 0:
+            # On conserve la valeur telle quelle, mais on s'assure que les NA sont déjà gérés
+            pass
+
+        # CatBoost préfère object/str simples plutôt que Categorical pandas
+        X[c] = s.astype(str)
+
+    # --- Numériques : convertir Oui/Non -> 1/0, puis to_numeric
     num_cols = [c for c in feature_cols if c not in cat_cols]
     for c in num_cols:
         if c not in X.columns:
             continue
         X[c] = X[c].apply(lambda v: yn_to_num_if_needed(v, col_is_numeric=True))
         X[c] = pd.to_numeric(X[c], errors="coerce")
+
     return X
+
 
 
 def cat_from_p_like_R(p: float) -> str:
@@ -1584,8 +1610,15 @@ elif active_tab == "Résultats d'analyse":
             X = fill_missing_code_like_R(X, set(analysis_cols))
             X = coerce_like_train_python(X, feature_cols, cat_cols, factor_levels)
 
-            pool_one = Pool(X, cat_features=cat_idx)
+            # ✅ Sécurisation CatBoost : pas de pd.NA dans les cat features
+            X_cb = X.copy()
+            for c in cat_cols:
+                if c in X_cb.columns:
+                    X_cb[c] = X_cb[c].astype("string").fillna("__MISSING__").astype(str)
+
+            pool_one = Pool(X_cb, cat_features=cat_idx)
             p_one = float(model.predict_proba(pool_one)[:, 1][0])
+
             cat = cat_from_p_like_R(p_one)
 
         marker_left = int(max(0, min(100, round(p_one * 100))))
@@ -1655,6 +1688,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
