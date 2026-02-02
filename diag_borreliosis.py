@@ -1244,7 +1244,7 @@ if page == "project":
 # ============================================================
 # EVALUATION
 # ============================================================
-st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
+#st.markdown(f"<div class='lyrae-page-title'>Évaluation clinique</div>", unsafe_allow_html=True)
 
 top_left, top_right = st.columns([1.2, 0.8])
 with top_left:
@@ -1733,6 +1733,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
