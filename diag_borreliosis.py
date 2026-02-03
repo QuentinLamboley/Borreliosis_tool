@@ -1339,23 +1339,10 @@ if page == "project":
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-
 # ============================================================
-# EVALUATION
+# EVALUATION — TOP ROW (Retour | Onglets | Suivant)
 # ============================================================
 st.markdown(f"<div class='lyrae-page-title'></div>", unsafe_allow_html=True)
-
-top_left, top_right = st.columns([1.2, 0.8])
-with top_left:
-    if st.button("⬅ Retour accueil"):
-        st.session_state["page"] = "home"
-        st.rerun()
-with top_right:
-    if st.button("🪦 Réinitialiser le formulaire", use_container_width=True):
-        for k in ["geo","risk_class","horse_name","addr_num","addr_street","addr_city","addr_cp","last_result"]:
-            if k in st.session_state:
-                del st.session_state[k]
-        st.rerun()
 
 TAB_LABELS = [
     "Identité",
@@ -1365,28 +1352,59 @@ TAB_LABELS = [
     "Résultats d'analyse",
 ]
 
-# Sélecteur contrôlé (segmented si dispo, sinon radio horizontal)
-try:
-    active_tab = st.segmented_control(
-        "",
-        options=TAB_LABELS,
-        default=TAB_LABELS[0],
-        key="active_tab",
-    )
-except Exception:
-    active_tab = st.radio(
-        "",
-        TAB_LABELS,
-        horizontal=True,
-        key="active_tab",
-        label_visibility="collapsed",
-    )
+# S'assure qu'on a une valeur par défaut
+st.session_state.setdefault("active_tab", TAB_LABELS[0])
 
+# Ligne top : 3 colonnes (mêmes largeurs à gauche/droite)
+c_left, c_mid, c_right = st.columns([0.22, 0.56, 0.22], gap="medium")
+
+with c_left:
+    if st.button("⬅ Retour accueil", use_container_width=True):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+with c_mid:
+    # Onglets au milieu
+    try:
+        active_tab = st.segmented_control(
+            "",
+            options=TAB_LABELS,
+            default=st.session_state.get("active_tab", TAB_LABELS[0]),
+            key="active_tab",
+        )
+    except Exception:
+        active_tab = st.radio(
+            "",
+            TAB_LABELS,
+            horizontal=True,
+            key="active_tab",
+            label_visibility="collapsed",
+        )
+
+with c_right:
+    # Bouton "Suivant" (même taille que "Retour" car colonne symétrique)
+    cur = st.session_state.get("active_tab", TAB_LABELS[0])
+    cur_idx = TAB_LABELS.index(cur) if cur in TAB_LABELS else 0
+    is_last = (cur_idx >= len(TAB_LABELS) - 1)
+
+    if st.button("Suivant ➜", use_container_width=True, disabled=is_last):
+        st.session_state["active_tab"] = TAB_LABELS[cur_idx + 1]
+        st.rerun()
+
+# Step (comme avant)
 STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_LABELS)}
-step = STEP_MAP.get(active_tab, 1)
-
+step = STEP_MAP.get(st.session_state.get("active_tab", TAB_LABELS[0]), 1)
 
 inputs: dict = {}
+
+
+
+
+
+
+
+
+
 
 # Aliases (accents)
 ALIASES = {}
@@ -1842,6 +1860,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
