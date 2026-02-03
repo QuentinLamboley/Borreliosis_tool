@@ -580,6 +580,58 @@ div[data-testid="stSegmentedControl"] button:focus{
   box-shadow: 0 0 0 4px rgba(14,59,53,.22) !important;
 }
 
+/* ============================================================
+   FORCE STYLE BARRE "ONGLETS" (segmented_control / fallback)
+============================================================ */
+
+/* 1) Le "button-group" BaseWeb (souvent c'est LUI la barre noire) */
+div[data-baseweb="button-group"]{
+  background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
+  border-radius: 999px !important;
+  padding: 6px !important;
+  border: 1px solid rgba(14,59,53,.22) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.08) !important;
+}
+
+/* 2) Couvrir aussi le wrapper Streamlit (selon versions) */
+div[data-testid="stSegmentedControl"],
+div[data-testid="stRadio"]{
+  background: transparent !important;
+}
+
+/* 3) Boutons (non sélectionnés) dans le button-group */
+div[data-baseweb="button-group"] button{
+  background: transparent !important;
+  color: rgba(14,59,53,.98) !important;
+  border: none !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  font-weight: 900 !important;
+  box-shadow: none !important;
+}
+
+/* 4) ✅ État sélectionné (vertsapin + texte blanc)
+   Selon versions: aria-pressed OU aria-checked */
+div[data-baseweb="button-group"] button[aria-pressed="true"],
+div[data-baseweb="button-group"] button[aria-checked="true"]{
+  background: var(--g900) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 18px rgba(0,0,0,.18) !important;
+}
+
+/* 5) Anti "saumon" au clic / focus */
+div[data-baseweb="button-group"] button:active,
+div[data-baseweb="button-group"] button:focus{
+  outline: none !important;
+  box-shadow: 0 0 0 4px rgba(14,59,53,.22) !important;
+}
+
+/* 6) (Optionnel) hover léger */
+div[data-baseweb="button-group"] button:hover{
+  filter: brightness(1.02) !important;
+  transform: translateY(-1px);
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -1790,6 +1842,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
