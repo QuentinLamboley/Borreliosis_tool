@@ -1342,8 +1342,6 @@ if page == "project":
 # ============================================================
 # EVALUATION — TOP ROW (Retour | Onglets | Suivant)
 # ============================================================
-st.markdown(f"<div class='lyrae-page-title'></div>", unsafe_allow_html=True)
-
 TAB_LABELS = [
     "Identité",
     "Contexte & exposition",
@@ -1352,10 +1350,10 @@ TAB_LABELS = [
     "Résultats d'analyse",
 ]
 
-# S'assure qu'on a une valeur par défaut
-st.session_state.setdefault("active_tab", TAB_LABELS[0])
+# ✅ Initialisation UNE SEULE FOIS (pas de default= dans le widget après)
+if "active_tab" not in st.session_state:
+    st.session_state["active_tab"] = TAB_LABELS[0]
 
-# Ligne top : 3 colonnes (mêmes largeurs à gauche/droite)
 c_left, c_mid, c_right = st.columns([0.22, 0.56, 0.22], gap="medium")
 
 with c_left:
@@ -1364,16 +1362,15 @@ with c_left:
         st.rerun()
 
 with c_mid:
-    # Onglets au milieu
+    # ✅ IMPORTANT : pas de default= ici, sinon warning jaune
     try:
-        active_tab = st.segmented_control(
+        st.segmented_control(
             "",
             options=TAB_LABELS,
-            default=st.session_state.get("active_tab", TAB_LABELS[0]),
             key="active_tab",
         )
     except Exception:
-        active_tab = st.radio(
+        st.radio(
             "",
             TAB_LABELS,
             horizontal=True,
@@ -1382,20 +1379,19 @@ with c_mid:
         )
 
 with c_right:
-    # Bouton "Suivant" (même taille que "Retour" car colonne symétrique)
-    cur = st.session_state.get("active_tab", TAB_LABELS[0])
-    cur_idx = TAB_LABELS.index(cur) if cur in TAB_LABELS else 0
+    cur = st.session_state["active_tab"]
+    cur_idx = TAB_LABELS.index(cur)
     is_last = (cur_idx >= len(TAB_LABELS) - 1)
 
     if st.button("Suivant ➜", use_container_width=True, disabled=is_last):
         st.session_state["active_tab"] = TAB_LABELS[cur_idx + 1]
         st.rerun()
 
-# Step (comme avant)
 STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_LABELS)}
-step = STEP_MAP.get(st.session_state.get("active_tab", TAB_LABELS[0]), 1)
+step = STEP_MAP.get(st.session_state["active_tab"], 1)
 
-inputs: dict = {}
+active_tab = st.session_state["active_tab"]
+
 
 
 
@@ -1860,6 +1856,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
