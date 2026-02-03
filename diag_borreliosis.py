@@ -632,6 +632,31 @@ div[data-baseweb="button-group"] button:hover{
   transform: translateY(-1px);
 }
 
+/* ------------------------------------------------------------
+   BARRE UNIQUE NAV (Retour | onglets | Suivant)
+   On repère la ligne juste après l'ancre .lyrae-nav-anchor
+------------------------------------------------------------ */
+.lyrae-nav-anchor + div[data-testid="stHorizontalBlock"]{
+  background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
+  border-radius: 999px !important;
+  padding: 14px 16px !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.08) !important;
+  border: 1px solid rgba(14,59,53,.18) !important;
+  align-items: center !important;
+}
+
+/* éviter que la ligne se décale visuellement */
+.lyrae-nav-anchor { height: 0; margin: 0; padding: 0; }
+
+/* Onglets (segmented/radio) mieux intégrés dans la barre */
+.lyrae-nav-anchor + div[data-testid="stHorizontalBlock"] div[data-testid="stSegmentedControl"],
+.lyrae-nav-anchor + div[data-testid="stHorizontalBlock"] div[role="radiogroup"]{
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -1340,9 +1365,9 @@ if page == "project":
     st.stop()
 
 # ============================================================
-# EVALUATION — TOP ROW (Retour | Onglets | Suivant)
+# EVALUATION — BARRE UNIQUE (Retour | onglets | Suivant)
 # ============================================================
-TAB_LABELS = [
+TAB_FULL = [
     "Identité",
     "Contexte & exposition",
     "Diagnostic d'exclusion",
@@ -1350,49 +1375,68 @@ TAB_LABELS = [
     "Résultats d'analyse",
 ]
 
-# ✅ Initialisation UNE SEULE FOIS (pas de default= dans le widget après)
+TAB_SHORT = ["Identité", "Exposition", "Exclusion", "Signes cliniques", "Analyses"]
+FULL2SHORT = dict(zip(TAB_FULL, TAB_SHORT))
+SHORT2FULL = dict(zip(TAB_SHORT, TAB_FULL))
+
+# ✅ init états (UNE SEULE FOIS)
 if "active_tab" not in st.session_state:
-    st.session_state["active_tab"] = TAB_LABELS[0]
+    st.session_state["active_tab"] = TAB_FULL[0]
+if "active_tab_short" not in st.session_state:
+    st.session_state["active_tab_short"] = FULL2SHORT.get(st.session_state["active_tab"], TAB_SHORT[0])
 
-c_left, c_mid, c_right = st.columns([0.22, 0.56, 0.22], gap="medium")
+def _sync_tab_from_short():
+    st.session_state["active_tab"] = SHORT2FULL.get(st.session_state["active_tab_short"], TAB_FULL[0])
 
-with c_left:
+# ✅ Barre unique visuelle (on la stylise via CSS plus bas)
+st.markdown('<div class="lyrae-nav-anchor"></div>', unsafe_allow_html=True)
+
+nav_left, nav_mid, nav_right = st.columns([0.22, 0.56, 0.22], gap="medium")
+
+with nav_left:
     if st.button("⬅ Retour accueil", use_container_width=True):
         st.session_state["page"] = "home"
         st.rerun()
 
-with c_mid:
-    # ✅ IMPORTANT : pas de default= ici, sinon warning jaune
+with nav_mid:
+    # IMPORTANT : pas de default= (sinon warnings/bugs)
     try:
         st.segmented_control(
             "",
-            options=TAB_LABELS,
-            key="active_tab",
+            options=TAB_SHORT,
+            key="active_tab_short",
+            on_change=_sync_tab_from_short,
         )
     except Exception:
         st.radio(
             "",
-            TAB_LABELS,
+            TAB_SHORT,
             horizontal=True,
-            key="active_tab",
+            key="active_tab_short",
             label_visibility="collapsed",
+            on_change=_sync_tab_from_short,
         )
 
-with c_right:
-    cur = st.session_state["active_tab"]
-    cur_idx = TAB_LABELS.index(cur)
-    is_last = (cur_idx >= len(TAB_LABELS) - 1)
+with nav_right:
+    cur_full = st.session_state["active_tab"]
+    cur_idx = TAB_FULL.index(cur_full)
+    is_last = (cur_idx >= len(TAB_FULL) - 1)
 
     if st.button("Suivant ➜", use_container_width=True, disabled=is_last):
-        st.session_state["active_tab"] = TAB_LABELS[cur_idx + 1]
+        nxt_full = TAB_FULL[cur_idx + 1]
+        st.session_state["active_tab"] = nxt_full
+        st.session_state["active_tab_short"] = FULL2SHORT[nxt_full]
         st.rerun()
 
-STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_LABELS)}
-step = STEP_MAP.get(st.session_state["active_tab"], 1)
-
+# ✅ active_tab conservé en "FULL" (comme tes if/elif existants)
 active_tab = st.session_state["active_tab"]
+STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_FULL)}
+step = STEP_MAP.get(active_tab, 1)
 
-
+# ============================================================
+# ✅ IMPORTANT : inputs DOIT être défini AVANT tout put()
+# ============================================================
+inputs: dict = {}
 
 
 
@@ -1856,6 +1900,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
