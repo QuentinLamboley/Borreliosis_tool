@@ -533,6 +533,53 @@ div[data-testid="stSelectbox"] div[role="combobox"]{
   width: 100% !important;
 }
 
+/* ============================================================
+   SEGMENTED CONTROL (tes "onglets")
+   - Barre marron comme les boutons
+   - Sélection vert sapin + texte blanc
+============================================================ */
+
+/* Conteneur (la barre) */
+div[data-testid="stSegmentedControl"]{
+  background: linear-gradient(180deg, var(--accent2) 0%, var(--accent) 100%) !important;
+  padding: 6px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(14,59,53,.22) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.08) !important;
+  width: fit-content !important;
+}
+
+/* Tous les boutons (non sélectionnés) */
+div[data-testid="stSegmentedControl"] button{
+  background: transparent !important;
+  color: rgba(14,59,53,.98) !important;
+  border: none !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  font-weight: 900 !important;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
+/* Hover */
+div[data-testid="stSegmentedControl"] button:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+/* ✅ Bouton sélectionné : vert sapin + texte blanc */
+div[data-testid="stSegmentedControl"] button[aria-pressed="true"]{
+  background: var(--g900) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 18px rgba(0,0,0,.18) !important;
+}
+
+/* ✅ Empêche l'effet "saumon" au clic / focus (overrides BaseWeb) */
+div[data-testid="stSegmentedControl"] button:active,
+div[data-testid="stSegmentedControl"] button:focus{
+  outline: none !important;
+  box-shadow: 0 0 0 4px rgba(14,59,53,.22) !important;
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -927,7 +974,7 @@ def render_map(lat: float, lon: float, zoom: int = 14):
 st.session_state.setdefault("page", "home")
 st.session_state.setdefault("geo", None)
 st.session_state.setdefault("risk_class", None)
-st.session_state.setdefault("horse_name", "CHEVAL_1")
+st.session_state.setdefault("horse_name", "TAGADA")
 st.session_state.setdefault("addr_num", "")
 st.session_state.setdefault("addr_street", "")
 st.session_state.setdefault("addr_city", "")
@@ -1743,6 +1790,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
