@@ -1364,8 +1364,9 @@ if page == "project":
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
+
 # ============================================================
-# EVALUATION — BARRE UNIQUE (Retour | onglets | Suivant)
+# EVALUATION — BARRE UNIQUE (Retour | onglets | Suivant) + goto safe
 # ============================================================
 TAB_FULL = [
     "Identité",
@@ -1374,21 +1375,27 @@ TAB_FULL = [
     "Signes cliniques",
     "Résultats d'analyse",
 ]
-
 TAB_SHORT = ["Identité", "Exposition", "Exclusion", "Signes cliniques", "Analyses"]
+
 FULL2SHORT = dict(zip(TAB_FULL, TAB_SHORT))
 SHORT2FULL = dict(zip(TAB_SHORT, TAB_FULL))
 
-# ✅ init états (UNE SEULE FOIS)
+# ✅ init états
 if "active_tab" not in st.session_state:
     st.session_state["active_tab"] = TAB_FULL[0]
-if "active_tab_short" not in st.session_state:
-    st.session_state["active_tab_short"] = FULL2SHORT.get(st.session_state["active_tab"], TAB_SHORT[0])
+if "tab_selector" not in st.session_state:
+    st.session_state["tab_selector"] = FULL2SHORT[st.session_state["active_tab"]]
 
-def _sync_tab_from_short():
-    st.session_state["active_tab"] = SHORT2FULL.get(st.session_state["active_tab_short"], TAB_FULL[0])
+# ✅ si un "goto" a été demandé au run précédent, on l'applique AVANT de créer le widget
+if "goto_tab_short" in st.session_state:
+    target_short = st.session_state.pop("goto_tab_short")
+    st.session_state["tab_selector"] = target_short
+    st.session_state["active_tab"] = SHORT2FULL.get(target_short, TAB_FULL[0])
 
-# ✅ Barre unique visuelle (on la stylise via CSS plus bas)
+def _sync_tab_from_widget():
+    st.session_state["active_tab"] = SHORT2FULL.get(st.session_state["tab_selector"], TAB_FULL[0])
+
+# Ancre (pour CSS)
 st.markdown('<div class="lyrae-nav-anchor"></div>', unsafe_allow_html=True)
 
 nav_left, nav_mid, nav_right = st.columns([0.22, 0.56, 0.22], gap="medium")
@@ -1399,22 +1406,21 @@ with nav_left:
         st.rerun()
 
 with nav_mid:
-    # IMPORTANT : pas de default= (sinon warnings/bugs)
     try:
         st.segmented_control(
             "",
             options=TAB_SHORT,
-            key="active_tab_short",
-            on_change=_sync_tab_from_short,
+            key="tab_selector",
+            on_change=_sync_tab_from_widget,
         )
     except Exception:
         st.radio(
             "",
             TAB_SHORT,
             horizontal=True,
-            key="active_tab_short",
+            key="tab_selector",
             label_visibility="collapsed",
-            on_change=_sync_tab_from_short,
+            on_change=_sync_tab_from_widget,
         )
 
 with nav_right:
@@ -1424,20 +1430,17 @@ with nav_right:
 
     if st.button("Suivant ➜", use_container_width=True, disabled=is_last):
         nxt_full = TAB_FULL[cur_idx + 1]
-        st.session_state["active_tab"] = nxt_full
-        st.session_state["active_tab_short"] = FULL2SHORT[nxt_full]
+        # ✅ on ne touche PAS à tab_selector ici (clé widget) -> on programme un goto
+        st.session_state["goto_tab_short"] = FULL2SHORT[nxt_full]
         st.rerun()
 
-# ✅ active_tab conservé en "FULL" (comme tes if/elif existants)
+# ✅ active_tab pour tes if/elif existants
 active_tab = st.session_state["active_tab"]
 STEP_MAP = {name: i + 1 for i, name in enumerate(TAB_FULL)}
 step = STEP_MAP.get(active_tab, 1)
 
-# ============================================================
-# ✅ IMPORTANT : inputs DOIT être défini AVANT tout put()
-# ============================================================
+# ✅ IMPORTANT : inputs DOIT exister AVANT tout put()
 inputs: dict = {}
-
 
 
 
@@ -1900,6 +1903,7 @@ elif active_tab == "Résultats d'analyse":
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
